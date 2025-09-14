@@ -1,0 +1,26 @@
+# .ruff.toml
+line-length = 100
+indent-width = 4
+target-version = "py311"
+
+[lint]
+# Включаем основные категории правил
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+]
+
+# Игнорируем слишком жёсткие правила
+ignore = [
+    "E501",  # длинные строки (будем править руками при необходимости)
+    "B008",  # do not perform function calls in defaults
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"

@@ -1,0 +1,26 @@
+version: "3.9"
+services:
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+  # опционально: включишь на Этапе 1A
+  ngrok:
+    image: ngrok/ngrok:alpine
+    env_file: .env
+    command:
+      - http
+      - --authtoken=$(NGROK_AUTHTOKEN)
+      - --domain=$(NGROK_DOMAIN)
+      - app:8000
+    depends_on:
+      - app
+    profiles: ["tunnel"]
