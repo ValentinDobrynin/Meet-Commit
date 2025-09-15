@@ -14,22 +14,6 @@ notion = Client(auth=NOTION_TOKEN)
 
 # -------- helpers --------
 
-def _find_by_hash(raw_hash: str) -> str | None:
-    """Вернёт page_id по Raw hash или None."""
-    resp = notion.databases.query(
-        **{
-            "database_id": NOTION_DB,
-            "filter": {
-                "property": "Raw hash",
-                "rich_text": {"equals": raw_hash},
-            },
-            "page_size": 1,
-        }
-    )
-    results = resp.get("results", [])
-    return results[0]["id"] if results else None
-
-
 def _props(payload: dict[str, Any]) -> dict[str, Any]:
     """Собирает properties под фактические поля базы."""
     name = payload["title"][:200] if payload.get("title") else "Meeting"
@@ -56,21 +40,18 @@ def _props(payload: dict[str, Any]) -> dict[str, Any]:
 
 def upsert_meeting(payload: dict[str, Any]) -> str:
     """
-    Создаёт или обновляет страницу Meeting по Raw hash.
+    Создаёт новую страницу Meeting для каждой суммаризации.
     Возвращает URL страницы.
     Ожидаемые поля payload: title, date, attendees, source, raw_hash, summary_md, tags.
     """
-    page_id = _find_by_hash(payload["raw_hash"])
     properties = _props(payload)
-
-    if page_id:
-        notion.pages.update(page_id=page_id, properties=properties)
-    else:
-        page = notion.pages.create(
-            parent={"database_id": NOTION_DB},
-            properties=properties,
-        )
-        page_id = page["id"]
+    
+    # Всегда создаем новую запись
+    page = notion.pages.create(
+        parent={"database_id": NOTION_DB},
+        properties=properties,
+    )
+    page_id = page["id"]
 
     page = notion.pages.retrieve(page_id)
     return page["url"]
