@@ -1,0 +1,8 @@
+{
+  "people": [
+    { "name_en": "Daniil",   "aliases": ["Даня", "Даниил", "Danya", "Daniil", "даней"] },
+    { "name_en": "Valentin", "aliases": ["Валентин", "Валя", "Valentin", "Val"] },
+    { "name_en": "Katya",    "aliases": ["Катя", "Екатерина", "Katya", "Ekaterina", "Катей"] },
+    { "name_en": "Sasha Katanov", "aliases": ["Саша Катанов", "Катанов", "Katanov"] }
+  ]
+}

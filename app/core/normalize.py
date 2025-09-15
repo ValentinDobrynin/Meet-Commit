@@ -1,5 +1,6 @@
 from __future__ import annotations
 import hashlib
+import json
 import re
 from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
@@ -22,8 +23,42 @@ MONTH_NAMES = {
     "января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
     "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12,
     "янв": 1, "фев": 2, "мар": 3, "апр": 4, "июн": 6, "июл": 7,
-    "авг": 8, "сен": 9, "окт": 10, "ноя": 11, "дек": 12,
+    "авг": 8, "сен": 9, "окт": 10, "ноя": 11,     "дек": 12,
 }
+
+DICT_DIR = Path(__file__).resolve().parent.parent / "dictionaries"
+
+def _load_people() -> list[dict]:
+    """Загружает словарь людей из JSON файла."""
+    p = DICT_DIR / "people.json"
+    if not p.exists():
+        return []
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f).get("people", [])
+    except (json.JSONDecodeError, FileNotFoundError):
+        return []
+
+def _extract_attendees_en(text: str, max_scan: int = 8000) -> list[str]:
+    """Извлекает участников встречи и возвращает их канонические английские имена."""
+    people = _load_people()
+    hay = text[:max_scan].lower()
+    found: list[str] = []
+    
+    for person in people:
+        name_en = (person.get("name_en") or "").strip()
+        if not name_en:
+            continue
+            
+        aliases = person.get("aliases", [])
+        for alias in aliases:
+            alias_clean = (alias or "").strip().lower()
+            if alias_clean and alias_clean in hay:
+                if name_en not in found:
+                    found.append(name_en)
+                break  # Нашли этого человека, переходим к следующему
+    
+    return found
 
 def _infer_date_from_text(s: str) -> date | None:
     """Извлекает дату из текста используя различные паттерны."""
@@ -119,5 +154,5 @@ def run(raw_bytes: bytes | None, text: str | None, filename: str) -> dict:
     sha = hashlib.sha256(clean.encode("utf-8")).hexdigest()
     title = (Path(filename).stem or "Meeting")[:80]
     date_iso = _infer_meeting_date(filename, clean)
-    attendees: list[str] = []  # заполним в 1A.10
+    attendees = _extract_attendees_en(clean)  # английские канонические имена
     return {"title": title, "date": date_iso, "attendees": attendees, "text": clean, "raw_hash": sha}

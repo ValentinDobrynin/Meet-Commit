@@ -18,9 +18,18 @@ def run(summary_md: str, meta: dict) -> list[str]:
     """v0 tagger: ищет ключевые слова в summary и meta и возвращает список тегов"""
     tags = set()
     low = summary_md.lower()
+
+    # существующий маппинг через SYNONYMS
     for key, mapped_tag in SYNONYMS.items():
         if key in low or key in meta.get("title", "").lower():
             tags.add(mapped_tag)
+
+    # person/* из английских имён
+    for person_en in meta.get("attendees", []):
+        slug = person_en.strip().lower()
+        if slug:
+            tags.add(f"person/{slug}")
+
     return sorted(tags)
 
 # CLI
