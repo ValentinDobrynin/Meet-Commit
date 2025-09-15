@@ -1,9 +1,19 @@
+import asyncio
 import os
+import fcntl
+import sys
+from pathlib import Path
 
+from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+
+# Загружаем переменные окружения из .env файла
+load_dotenv()
+
+from app.bot.init import build_bot
 
 # Проверяем наличие обязательных переменных окружения
 try:
@@ -16,3 +26,67 @@ bot = Bot(
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
 dp = Dispatcher(storage=MemoryStorage())
+
+
+def acquire_lock():
+    """Создает lock-файл для предотвращения множественных запусков"""
+    lock_file = Path("/tmp/meet_commit_bot.lock")
+    
+    try:
+        # Создаем lock-файл
+        lock_fd = os.open(lock_file, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        
+        # Записываем PID процесса
+        os.write(lock_fd, str(os.getpid()).encode())
+        os.close(lock_fd)
+        
+        print(f"Lock acquired. PID: {os.getpid()}")
+        return True
+        
+    except (OSError, IOError) as e:
+        if e.errno == 11:  # EAGAIN - файл заблокирован
+            print("❌ Bot is already running! Another instance is active.")
+            print("   To stop the existing bot, run: pkill -f 'python app/bot/main.py'")
+            return False
+        else:
+            print(f"❌ Failed to acquire lock: {e}")
+            return False
+
+
+def release_lock():
+    """Освобождает lock-файл"""
+    lock_file = Path("/tmp/meet_commit_bot.lock")
+    try:
+        if lock_file.exists():
+            lock_file.unlink()
+            print("Lock released.")
+    except Exception as e:
+        print(f"Warning: Could not release lock: {e}")
+
+
+async def run() -> None:
+    """Запуск Telegram бота"""
+    try:
+        bot, dp = build_bot()
+        print("🤖 Starting bot in polling mode...")
+        await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
+    except Exception as e:
+        print(f"❌ Bot error: {e}")
+        raise
+
+
+if __name__ == "__main__":
+    # Проверяем, не запущен ли уже бот
+    if not acquire_lock():
+        sys.exit(1)
+    
+    try:
+        print("🚀 Meet-Commit Bot starting...")
+        asyncio.run(run())
+    except KeyboardInterrupt:
+        print("\n⏹️  Bot stopped by user")
+    except Exception as e:
+        print(f"❌ Error starting bot: {e}")
+    finally:
+        release_lock()

@@ -6,6 +6,16 @@ from openai import OpenAI
 def run(text: str, prompt_path: str, extra: str | None) -> str:
     with open(prompt_path, encoding="utf-8") as f:
         base = f.read()
+    
+    # Поддержка Markdown: убираем заголовки и форматирование для чистого промпта
+    if prompt_path.endswith('.md'):
+        # Убираем заголовки (# ## ###)
+        lines = []
+        for line in base.splitlines():
+            if not line.strip().startswith('#'):
+                lines.append(line)
+        base = '\n'.join(lines).strip()
+    
     prompt = base.replace("{EXTRA}", extra or "")
     
     # Проверяем наличие API ключа

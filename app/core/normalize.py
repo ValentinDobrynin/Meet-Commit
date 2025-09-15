@@ -1,5 +1,6 @@
 import hashlib
 from datetime import datetime
+from io import BytesIO, StringIO
 from pathlib import Path
 
 import webvtt
@@ -16,15 +17,11 @@ def _read_text(raw_bytes: bytes | None, text: str | None, filename: str) -> str:
         return text
     ext = _ext(filename)
     if ext == ".pdf":
-        return pdf_extract(fp=raw_bytes)
+        return pdf_extract(fp=BytesIO(raw_bytes))
     if ext == ".docx":
-        from io import BytesIO
-
         doc = Document(BytesIO(raw_bytes))
         return "\n".join([p.text for p in doc.paragraphs])
     if ext == ".vtt":
-        from io import BytesIO, StringIO
-
         tmp = BytesIO(raw_bytes).read().decode("utf-8", errors="ignore")
         return "\n".join([c.text for c in webvtt.read_buffer(StringIO(tmp))])
     return raw_bytes.decode("utf-8", errors="ignore")

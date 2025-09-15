@@ -5,7 +5,6 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 DICT_DIR = BASE_DIR / "dictionaries"
 
-
 def _load_dicts():
     with open(DICT_DIR / "tags.json", encoding="utf-8") as f:
         tags = json.load(f)
@@ -13,9 +12,7 @@ def _load_dicts():
         synonyms = json.load(f)
     return tags, synonyms
 
-
 TAGS, SYNONYMS = _load_dicts()
-
 
 def run(summary_md: str, meta: dict) -> list[str]:
     """v0 tagger: ищет ключевые слова в summary и meta и возвращает список тегов"""
@@ -25,7 +22,6 @@ def run(summary_md: str, meta: dict) -> list[str]:
         if key in low or key in meta.get("title", "").lower():
             tags.add(mapped_tag)
     return sorted(tags)
-
 
 # CLI
 if __name__ == "__main__":
