@@ -1,0 +1,13 @@
+{
+    "areas": [
+      "area/ifrs",
+      "area/fpa",
+      "area/mna"
+    ],
+    "projects": [
+      "project/budgets",
+      "project/evm"
+    ],
+    "persons": []
+  }
+  

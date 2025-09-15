@@ -12,6 +12,10 @@ logs:
 	docker compose -f docker-compose.local.yml logs -f app
 
 test:
+	TELEGRAM_TOKEN=1234567890:ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789 \
+	OPENAI_API_KEY=test \
+	NOTION_TOKEN=test \
+	NOTION_DB_MEETINGS_ID=test \
 	pytest -v
 
 lint:

@@ -1,0 +1,12 @@
+{
+    "ifrs": "area/ifrs",
+    "фрс": "area/ifrs",
+    "fp&a": "area/fpa",
+    "fpa": "area/fpa",
+    "m&a": "area/mna",
+    "mna": "area/mna",
+    "budget": "project/budgets",
+    "бюдж": "project/budgets",
+    "evm": "project/evm"
+  }
+  
