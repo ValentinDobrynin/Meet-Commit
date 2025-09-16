@@ -58,6 +58,13 @@ async def cmd_cancel(msg: Message, state: FSMContext):
 
 @router.message(F.document | (F.text & ~F.text.startswith("/")))
 async def receive_input(msg: Message, state: FSMContext):
+    # Проверяем, не находимся ли мы в состоянии ожидания дополнительного промпта
+    current_state = await state.get_state()
+    if current_state == IngestStates.waiting_extra:
+        # Если да, то это дополнительный промпт, передаем управление соответствующему обработчику
+        await extra_entered(msg, state)
+        return
+    
     raw_bytes: bytes | None = None
     text: str | None = None
     filename = "message.txt"
