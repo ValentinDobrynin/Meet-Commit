@@ -70,9 +70,19 @@ async def receive_input(msg: Message, state: FSMContext):
     filename = "message.txt"
 
     if msg.document:
+        if not msg.bot:
+            await msg.answer("Ошибка: бот недоступен")
+            return
         file = await msg.bot.get_file(msg.document.file_id)
+        if not file.file_path:
+            await msg.answer("Ошибка: путь к файлу не найден")
+            return
         bytes_io = await msg.bot.download_file(file.file_path)
-        raw_bytes = bytes_io.read()
+        if bytes_io:
+            raw_bytes = bytes_io.read()
+        else:
+            await msg.answer("Ошибка: не удалось загрузить файл")
+            return
         filename = msg.document.file_name or "meeting.txt"
     else:
         text = msg.text or ""
@@ -91,13 +101,19 @@ async def choose_prompt(cb: CallbackQuery, state: FSMContext):
             await cb.answer("Нет входных данных. Пришли файл или текст.", show_alert=True)
             return
 
+        if not cb.data:
+            await cb.answer("Ошибка: данные callback не найдены", show_alert=True)
+            return
+
         prompt_file = cb.data.split("prompt:", 1)[1]
         await state.update_data(prompt_file=prompt_file)
         await state.set_state(IngestStates.waiting_extra)
-        await cb.message.answer(
-            "Добавить уточнение к промпту? Напиши текст или нажми «Пропустить».",
-            reply_markup=_skip_kb(),
-        )
+
+        if cb.message:
+            await cb.message.answer(
+                "Добавить уточнение к промпту? Напиши текст или нажми «Пропустить».",
+                reply_markup=_skip_kb(),
+            )
         await cb.answer()
     except Exception as e:
         # Отвечаем на callback даже при ошибке
@@ -112,7 +128,8 @@ async def choose_prompt(cb: CallbackQuery, state: FSMContext):
 async def extra_skip(cb: CallbackQuery, state: FSMContext):
     try:
         await cb.answer()  # Отвечаем сразу на callback
-        await run_pipeline(cb.message, state, extra=None)
+        if cb.message and isinstance(cb.message, Message):
+            await run_pipeline(cb.message, state, extra=None)
     except Exception as e:
         # Отвечаем на callback даже при ошибке
         try:
@@ -147,13 +164,11 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
         meta = normalize_run(raw_bytes=raw_bytes, text=text, filename=filename)
 
         # Уведомляем о суммаризации
-        await msg.answer(
-            "🤖 <b>Суммаризирую через AI...</b>\n\n⏳ Это может занять 30-60 секунд..."
-        )
+        await msg.answer("🤖 <b>Суммаризирую через AI...</b>\n\n⏳ Это может занять 1-4 минуты...")
 
         # 2) summarize
         prompt_path = (PROMPTS_DIR / prompt_file).as_posix()
-        summary_md = summarize_run(text=meta["text"], prompt_path=prompt_path, extra=extra)
+        summary_md = await summarize_run(text=meta["text"], prompt_path=prompt_path, extra=extra)
 
         # 3) tagger v0
         tags = tagger_run(summary_md=summary_md, meta=meta)

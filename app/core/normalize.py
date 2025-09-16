@@ -56,7 +56,8 @@ def _load_people() -> list[dict]:
         return []
     try:
         with open(p, encoding="utf-8") as f:
-            return json.load(f).get("people", [])
+            data = json.load(f)
+            return data.get("people", []) if isinstance(data, dict) else []
     except (json.JSONDecodeError, FileNotFoundError):
         return []
 

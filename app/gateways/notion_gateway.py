@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from typing import Any
 
@@ -8,21 +9,26 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     notion_token: str = Field(..., description="Notion API token")
     notion_db_meetings_id: str = Field(..., description="Notion database ID for meetings")
-    
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 @lru_cache(maxsize=1)
 def _settings() -> Settings:
     """Получает настройки с кэшированием."""
-    return Settings()
+    return Settings(
+        notion_token=os.environ.get("NOTION_TOKEN", ""),
+        notion_db_meetings_id=os.environ.get("NOTION_DB_MEETINGS_ID", ""),
+    )
 
 
 @lru_cache(maxsize=1)
 def _client():
     """Получает Notion клиент с кэшированием."""
     from notion_client import Client
+
     return Client(auth=_settings().notion_token)
+
 
 # -------- helpers --------
 
@@ -39,7 +45,7 @@ def _props(payload: dict[str, Any]) -> dict[str, Any]:
 
     props = {
         "Name": {"title": [{"text": {"content": name}}]},
-        "Date": {"date": {"start": date}} if date else {"date": None},
+        "Date": {"date": {"start": date}} if date else {"date": {"start": None}},
         "Attendees": {"multi_select": [{"name": a} for a in attendees]},
         "Source": {"rich_text": [{"text": {"content": source}}]},
         "Raw hash": {"rich_text": [{"text": {"content": raw_hash}}]},
@@ -70,4 +76,4 @@ def upsert_meeting(payload: dict[str, Any]) -> str:
     page_id = page["id"]
 
     page = client.pages.retrieve(page_id)
-    return page["url"]
+    return str(page["url"])

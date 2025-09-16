@@ -2,6 +2,7 @@ import asyncio
 import fcntl
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -25,7 +26,7 @@ dp.include_router(router)
 
 def acquire_lock():
     """Создает lock-файл для предотвращения множественных запусков"""
-    lock_file = Path("/tmp/meet_commit_bot.lock")
+    lock_file = Path(tempfile.gettempdir()) / "meet_commit_bot.lock"
 
     try:
         # Создаем lock-файл
@@ -51,7 +52,7 @@ def acquire_lock():
 
 def release_lock():
     """Освобождает lock-файл"""
-    lock_file = Path("/tmp/meet_commit_bot.lock")
+    lock_file = Path(tempfile.gettempdir()) / "meet_commit_bot.lock"
     try:
         if lock_file.exists():
             lock_file.unlink()
