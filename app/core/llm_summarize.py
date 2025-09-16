@@ -1,15 +1,22 @@
 from __future__ import annotations
+
 import httpx
 from openai import OpenAI
+
 from app.settings import settings
+
 
 def _client() -> OpenAI:
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY отсутствует")
-    http = httpx.Client(timeout=30, limits=httpx.Limits(max_keepalive_connections=10, max_connections=20))
+    http = httpx.Client(
+        timeout=30, limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
+    )
     return OpenAI(api_key=settings.openai_api_key, http_client=http)
 
-def _merge_prompt(base: str, extra: str | None) -> str:
+
+def _merge_prompt(base: str | None, extra: str | None) -> str:
+    base = base or ""
     extra = (extra or "").strip()
     if not extra:
         return base
@@ -18,10 +25,19 @@ def _merge_prompt(base: str, extra: str | None) -> str:
     # fallback: аккуратно доклеиваем конец
     return f"{base.rstrip()}\n\nДоп. указания:\n{extra}"
 
-def run(text: str, prompt_path: str, extra: str | None,
-        *, model: str | None = None, temperature: float | None = None) -> str:
+
+def run(
+    text: str,
+    prompt_path: str,
+    extra: str | None,
+    *,
+    model: str | None = None,
+    temperature: float | None = None,
+) -> str:
     model = model or getattr(settings, "summarize_model", "gpt-4o-mini")
-    temperature = temperature if temperature is not None else getattr(settings, "summarize_temperature", 0.2)
+    temperature = (
+        temperature if temperature is not None else getattr(settings, "summarize_temperature", 0.2)
+    )
 
     with open(prompt_path, encoding="utf-8") as f:
         base = f.read()

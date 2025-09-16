@@ -1,6 +1,6 @@
-import pytest
 from datetime import date
-from app.core.normalize import _infer_meeting_date, _infer_date_from_text
+
+from app.core.normalize import _infer_date_from_text, _infer_meeting_date
 
 
 def test_infer_date_from_filename_full():
@@ -42,7 +42,7 @@ def test_infer_date_different_formats():
         ("meeting.txt", "Встреча 25-12-2024", "2024-12-25"),
         ("meeting.txt", "Дата: 25 декабря 2024", "2024-12-25"),
     ]
-    
+
     for filename, text, expected in test_cases:
         iso = _infer_meeting_date(filename, text)
         assert iso == expected, f"Failed for {filename}, {text}"

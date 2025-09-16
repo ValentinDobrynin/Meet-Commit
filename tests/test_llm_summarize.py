@@ -1,4 +1,3 @@
-import pytest
 from app.core.llm_summarize import _merge_prompt
 
 

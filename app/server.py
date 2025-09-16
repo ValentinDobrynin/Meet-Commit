@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 
-from app.bot.main import bot, dp  # <-- добавляем
+from app.bot.main import bot, dp
 from app.settings import Healthz, settings
 
 # из app/bot/__init__.py подтянется router с хэндлерами

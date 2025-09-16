@@ -14,7 +14,7 @@ echo -e "${GREEN}🛑 Meet-Commit Bot Stopper${NC}"
 echo "================================"
 
 # Ищем запущенные процессы бота
-BOT_PIDS=$(pgrep -f "app/bot/main.py" || true)
+BOT_PIDS=$(pgrep -f "app.bot.main" || true)
 
 if [[ -z "$BOT_PIDS" ]]; then
     echo -e "${YELLOW}⚠️  No bot processes found running${NC}"
@@ -30,7 +30,7 @@ else
     sleep 2
     
     # Проверяем, завершились ли процессы
-    REMAINING_PIDS=$(pgrep -f "app/bot/main.py" || true)
+    REMAINING_PIDS=$(pgrep -f "app.bot.main" || true)
     if [[ -n "$REMAINING_PIDS" ]]; then
         echo -e "${RED}⚠️  Some processes didn't stop gracefully. Force killing...${NC}"
         echo "$REMAINING_PIDS" | xargs kill -9

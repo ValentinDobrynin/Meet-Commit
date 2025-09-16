@@ -1,4 +1,3 @@
-import pytest
 from app.core.normalize import _extract_attendees_en, _load_people
 from app.core.tagger import run as tagger_run
 
@@ -8,7 +7,7 @@ def test_load_people():
     people = _load_people()
     assert isinstance(people, list)
     assert len(people) > 0
-    
+
     # Проверяем структуру
     for person in people:
         assert "name_en" in person
@@ -71,12 +70,9 @@ def test_attendees_max_scan_limit():
 def test_tagger_with_attendees():
     """Тест теггера с участниками."""
     summary = "Обсудили бюджет проекта"
-    meta = {
-        "title": "Встреча по проекту",
-        "attendees": ["Valentin", "Daniil"]
-    }
+    meta = {"title": "Встреча по проекту", "attendees": ["Valentin", "Daniil"]}
     tags = tagger_run(summary, meta)
-    
+
     # Проверяем что добавились теги участников
     assert "person/valentin" in tags
     assert "person/daniil" in tags
@@ -85,12 +81,9 @@ def test_tagger_with_attendees():
 def test_tagger_attendees_empty():
     """Тест теггера без участников."""
     summary = "Обсудили бюджет проекта"
-    meta = {
-        "title": "Встреча по проекту",
-        "attendees": []
-    }
+    meta = {"title": "Встреча по проекту", "attendees": []}
     tags = tagger_run(summary, meta)
-    
+
     # Не должно быть тегов person/*
     person_tags = [tag for tag in tags if tag.startswith("person/")]
     assert len(person_tags) == 0
@@ -99,12 +92,9 @@ def test_tagger_attendees_empty():
 def test_tagger_attendees_with_spaces():
     """Тест теггера с пробелами в именах."""
     summary = "Обсудили бюджет проекта"
-    meta = {
-        "title": "Встреча по проекту",
-        "attendees": [" Valentin ", " Daniil "]
-    }
+    meta = {"title": "Встреча по проекту", "attendees": [" Valentin ", " Daniil "]}
     tags = tagger_run(summary, meta)
-    
+
     # Пробелы должны быть убраны
     assert "person/valentin" in tags
     assert "person/daniil" in tags

@@ -32,15 +32,15 @@ if [[ ! -f ".env" ]]; then
 fi
 
 # Проверяем, не запущен ли уже бот
-if pgrep -f "app/bot/main.py" > /dev/null; then
+if pgrep -f "app.bot.main" > /dev/null; then
     echo -e "${RED}❌ Bot is already running!${NC}"
     echo "Running processes:"
-    pgrep -f "app/bot/main.py" | xargs ps -p
+    pgrep -f "app.bot.main" | xargs ps -p
     echo ""
     echo "To stop existing bot, run:"
     echo "  ./stop_bot.sh"
     echo "  or"
-    echo "  pkill -f 'app/bot/main.py'"
+    echo "  pkill -f 'app.bot.main'"
     exit 1
 fi
 
@@ -48,7 +48,7 @@ fi
 LOCK_FILE="/tmp/meet_commit_bot.lock"
 if [[ -f "$LOCK_FILE" ]]; then
     echo -e "${YELLOW}⚠️  Lock file exists. Checking if process is still running...${NC}"
-    if pgrep -f "python app/bot/main.py" > /dev/null; then
+    if pgrep -f "app.bot.main" > /dev/null; then
         echo -e "${RED}❌ Bot process is still running!${NC}"
         exit 1
     else
@@ -65,4 +65,4 @@ echo "Press Ctrl+C to stop the bot"
 echo "================================"
 
 # Запускаем бота
-python app/bot/main.py
+python -m app.bot.main

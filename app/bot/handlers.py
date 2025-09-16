@@ -64,7 +64,7 @@ async def receive_input(msg: Message, state: FSMContext):
         # Если да, то это дополнительный промпт, передаем управление соответствующему обработчику
         await extra_entered(msg, state)
         return
-    
+
     raw_bytes: bytes | None = None
     text: str | None = None
     filename = "message.txt"
@@ -84,27 +84,42 @@ async def receive_input(msg: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("prompt:"))
 async def choose_prompt(cb: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    
-    if not data.get("raw_bytes") and not data.get("text"):
-        await cb.answer("Нет входных данных. Пришли файл или текст.", show_alert=True)
-        return
+    try:
+        data = await state.get_data()
 
-    prompt_file = cb.data.split("prompt:", 1)[1]
-    await state.update_data(prompt_file=prompt_file)
-    await state.set_state(IngestStates.waiting_extra)
-    await cb.message.answer(
-        "Добавить уточнение к промпту? Напиши текст или нажми «Пропустить».",
-        reply_markup=_skip_kb(),
-    )
-    await cb.answer()
+        if not data.get("raw_bytes") and not data.get("text"):
+            await cb.answer("Нет входных данных. Пришли файл или текст.", show_alert=True)
+            return
+
+        prompt_file = cb.data.split("prompt:", 1)[1]
+        await state.update_data(prompt_file=prompt_file)
+        await state.set_state(IngestStates.waiting_extra)
+        await cb.message.answer(
+            "Добавить уточнение к промпту? Напиши текст или нажми «Пропустить».",
+            reply_markup=_skip_kb(),
+        )
+        await cb.answer()
+    except Exception as e:
+        # Отвечаем на callback даже при ошибке
+        try:
+            await cb.answer("Произошла ошибка при обработке запроса.")
+        except Exception:
+            pass  # Игнорируем ошибки ответа на callback
+        print(f"Error in choose_prompt: {e}")
 
 
 @router.callback_query(F.data == "extra:skip")
 async def extra_skip(cb: CallbackQuery, state: FSMContext):
-    await run_pipeline(cb.message, state, extra=None)
-    await cb.answer()
-
+    try:
+        await cb.answer()  # Отвечаем сразу на callback
+        await run_pipeline(cb.message, state, extra=None)
+    except Exception as e:
+        # Отвечаем на callback даже при ошибке
+        try:
+            await cb.answer("Произошла ошибка при обработке запроса.")
+        except Exception:
+            pass  # Игнорируем ошибки ответа на callback
+        print(f"Error in extra_skip: {e}")
 
 
 @router.message(IngestStates.waiting_extra, F.text)
@@ -132,7 +147,9 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
         meta = normalize_run(raw_bytes=raw_bytes, text=text, filename=filename)
 
         # Уведомляем о суммаризации
-        await msg.answer("🤖 <b>Суммаризирую через AI...</b>\n\n⏳ Это может занять 30-60 секунд...")
+        await msg.answer(
+            "🤖 <b>Суммаризирую через AI...</b>\n\n⏳ Это может занять 30-60 секунд..."
+        )
 
         # 2) summarize
         prompt_path = (PROMPTS_DIR / prompt_file).as_posix()

@@ -1,18 +1,31 @@
-import os
+from functools import lru_cache
 from typing import Any
 
-from notion_client import Client
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
-# Проверяем наличие обязательных переменных окружения
-try:
-    NOTION_DB = os.environ["NOTION_DB_MEETINGS_ID"]
-    NOTION_TOKEN = os.environ["NOTION_TOKEN"]
-except KeyError as e:
-    raise ValueError(f"Required environment variable not found: {e}") from None
 
-notion = Client(auth=NOTION_TOKEN)
+class Settings(BaseSettings):
+    notion_token: str = Field(..., description="Notion API token")
+    notion_db_meetings_id: str = Field(..., description="Notion database ID for meetings")
+    
+    model_config = {"env_file": ".env", "extra": "ignore"}
+
+
+@lru_cache(maxsize=1)
+def _settings() -> Settings:
+    """Получает настройки с кэшированием."""
+    return Settings()
+
+
+@lru_cache(maxsize=1)
+def _client():
+    """Получает Notion клиент с кэшированием."""
+    from notion_client import Client
+    return Client(auth=_settings().notion_token)
 
 # -------- helpers --------
+
 
 def _props(payload: dict[str, Any]) -> dict[str, Any]:
     """Собирает properties под фактические поля базы."""
@@ -38,6 +51,7 @@ def _props(payload: dict[str, Any]) -> dict[str, Any]:
 
 # -------- public API --------
 
+
 def upsert_meeting(payload: dict[str, Any]) -> str:
     """
     Создаёт новую страницу Meeting для каждой суммаризации.
@@ -45,13 +59,15 @@ def upsert_meeting(payload: dict[str, Any]) -> str:
     Ожидаемые поля payload: title, date, attendees, source, raw_hash, summary_md, tags.
     """
     properties = _props(payload)
-    
+    client = _client()
+    db_id = _settings().notion_db_meetings_id
+
     # Всегда создаем новую запись
-    page = notion.pages.create(
-        parent={"database_id": NOTION_DB},
+    page = client.pages.create(
+        parent={"database_id": db_id},
         properties=properties,
     )
     page_id = page["id"]
 
-    page = notion.pages.retrieve(page_id)
+    page = client.pages.retrieve(page_id)
     return page["url"]
