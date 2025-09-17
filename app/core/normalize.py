@@ -48,6 +48,44 @@ MONTH_NAMES = {
 
 DICT_DIR = Path(__file__).resolve().parent.parent / "dictionaries"
 
+# === NEW: Enhanced month maps for word-based date parsing ===
+RU_MONTHS = {
+    # именительный/родительный падежи и разговорные формы
+    "январь": "01", "янв": "01", "января": "01", "январе": "01",
+    "февраль": "02", "фев": "02", "февраля": "02", "феврале": "02",
+    "март": "03", "мар": "03", "марта": "03", "марте": "03",
+    "апрель": "04", "апр": "04", "апреля": "04", "апреле": "04",
+    "май": "05", "мая": "05", "мае": "05",
+    "июнь": "06", "июн": "06", "июня": "06", "июне": "06",
+    "июль": "07", "июл": "07", "июля": "07", "июле": "07",
+    "август": "08", "авг": "08", "августа": "08", "августе": "08",
+    "сентябрь": "09", "сен": "09", "сентября": "09", "сентябре": "09",
+    "октябрь": "10", "окт": "10", "октября": "10", "октябре": "10",
+    "ноябрь": "11", "ноя": "11", "ноября": "11", "ноябре": "11",
+    "декабрь": "12", "дек": "12", "декабря": "12", "декабре": "12",
+}
+
+EN_MONTHS = {
+    "january": "01", "jan": "01",
+    "february": "02", "feb": "02",
+    "march": "03", "mar": "03",
+    "april": "04", "apr": "04",
+    "may": "05",
+    "june": "06", "jun": "06",
+    "july": "07", "jul": "07",
+    "august": "08", "aug": "08",
+    "september": "09", "sep": "09", "sept": "09",
+    "october": "10", "oct": "10",
+    "november": "11", "nov": "11",
+    "december": "12", "dec": "12",
+}
+
+# === NEW: Word-based date patterns ===
+# 25 марта 2025 / 25 мар 2025 / 25 March 2025 / Mar 25, 2025 / 25 Apr
+PAT_WORD_RU = re.compile(r"\b(?P<d>\d{1,2})\s+(?P<m>[А-Яа-яЁё\.]+)\s*(?P<y>\d{4})?\b", re.IGNORECASE)
+PAT_WORD_EN_DMY = re.compile(r"\b(?P<d>\d{1,2})\s+(?P<m>[A-Za-z\.]+)\s*(?P<y>\d{4})?\b", re.IGNORECASE)
+PAT_WORD_EN_MDY = re.compile(r"\b(?P<m>[A-Za-z\.]+)\s+(?P<d>\d{1,2})(?:,)?\s*(?P<y>\d{4})?\b", re.IGNORECASE)
+
 
 def _load_people() -> list[dict]:
     """Загружает словарь людей из JSON файла."""
@@ -82,6 +120,45 @@ def _extract_attendees_en(text: str, max_scan: int = 8000) -> list[str]:
                 break  # Нашли этого человека, переходим к следующему
 
     return found
+
+
+def _map_month(token: str) -> str | None:
+    """Маппинг названия месяца в номер (01-12)."""
+    t = token.strip(". ").lower()
+    return RU_MONTHS.get(t) or EN_MONTHS.get(t)
+
+
+def _infer_date_from_words(s: str) -> date | None:
+    """Извлекает дату из текста используя названия месяцев."""
+    def _mk(d: int, m_tok: str, y: int | None) -> date | None:
+        mm = _map_month(m_tok)
+        if not mm:
+            return None
+        
+        try:
+            if y is None:
+                # без года → эвристика: текущий или прошлый, как и раньше
+                today = date.today()
+                cand = date(today.year, int(mm), d)
+                if cand - today > timedelta(days=60):
+                    cand = date(today.year - 1, int(mm), d)
+                return cand
+            return date(y, int(mm), d)
+        except ValueError:
+            return None
+
+    # Пробуем разные паттерны
+    for pat in (PAT_WORD_RU, PAT_WORD_EN_DMY, PAT_WORD_EN_MDY):
+        m = pat.search(s)
+        if m:
+            gd = m.groupdict()
+            try:
+                d = int(gd["d"])
+                y = int(gd["y"]) if gd.get("y") else None
+                return _mk(d, gd["m"], y)
+            except (ValueError, TypeError):
+                continue
+    return None
 
 
 def _infer_date_from_text(s: str) -> date | None:
@@ -142,15 +219,19 @@ def _infer_date_from_text(s: str) -> date | None:
 
 def _infer_meeting_date(filename: str, text: str) -> str:
     """Определяет дату встречи из имени файла или текста."""
-    # 1) по имени файла
+    # 1) по имени файла (числовые паттерны)
     filename_stem = Path(filename).stem
     dt = _infer_date_from_text(filename_stem)
 
-    # 2) по тексту (первые 5000 символов достаточно)
+    # 2) NEW: по тексту используя названия месяцев (приоритет)
+    if not dt:
+        dt = _infer_date_from_words(text[:6000])
+
+    # 3) по тексту используя числовые паттерны (fallback)
     if not dt:
         dt = _infer_date_from_text(text[:5000])
 
-    # 3) fallback: сегодня
+    # 4) fallback: сегодня
     if not dt:
         dt = date.today()
 
