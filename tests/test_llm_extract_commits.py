@@ -1,0 +1,388 @@
+"""
+Тесты для модуля извлечения коммитов из транскриптов встреч.
+"""
+import json
+from unittest.mock import Mock, patch
+
+import pytest
+from pydantic import ValidationError
+
+from app.core.llm_extract_commits import (
+    ExtractedCommit,
+    _build_messages,
+    _create_client,
+    _extract_json,
+    _load_prompt,
+    _to_models,
+    extract_commits,
+)
+
+
+class TestExtractedCommit:
+    """Тесты для модели ExtractedCommit."""
+    
+    def test_valid_commit(self):
+        """Тест валидного коммита."""
+        commit = ExtractedCommit(
+            text="Подготовить отчет",
+            direction="mine",
+            assignees=["Valentin"],
+            due_iso="2024-12-31",
+            confidence=0.8,
+            flags=["explicit_deadline"],
+            context="Я подготовлю отчет до конца года",
+            reasoning="Первое лицо, явный срок"
+        )
+        
+        assert commit.text == "Подготовить отчет"
+        assert commit.direction == "mine"
+        assert commit.assignees == ["Valentin"]
+        assert commit.due_iso == "2024-12-31"
+        assert commit.confidence == 0.8
+        assert commit.flags == ["explicit_deadline"]
+
+    def test_minimal_commit(self):
+        """Тест минимального коммита."""
+        commit = ExtractedCommit(
+            text="Сделать задачу",
+            direction="theirs"
+        )
+        
+        assert commit.text == "Сделать задачу"
+        assert commit.direction == "theirs"
+        assert commit.assignees == []
+        assert commit.due_iso is None
+        assert commit.confidence == 0.5
+        assert commit.flags == []
+
+    def test_invalid_direction(self):
+        """Тест невалидного direction."""
+        with pytest.raises(ValidationError):
+            ExtractedCommit(
+                text="Сделать задачу",
+                direction="invalid"
+            )
+
+    def test_short_text(self):
+        """Тест слишком короткого текста."""
+        with pytest.raises(ValidationError):
+            ExtractedCommit(
+                text="Короче",  # меньше 8 символов
+                direction="mine"
+            )
+
+    def test_assignees_stripped(self):
+        """Тест очистки assignees от пробелов."""
+        commit = ExtractedCommit(
+            text="Сделать задачу",
+            direction="mine",
+            assignees=["  Valentin  ", "", "  ", "Daniil"]
+        )
+        
+        assert commit.assignees == ["Valentin", "Daniil"]
+
+    def test_confidence_bounds(self):
+        """Тест границ confidence."""
+        # Валидные значения
+        ExtractedCommit(text="Сделать задачу", direction="mine", confidence=0.0)
+        ExtractedCommit(text="Сделать задачу", direction="mine", confidence=1.0)
+        ExtractedCommit(text="Сделать задачу", direction="mine", confidence=0.5)
+        
+        # Невалидные значения
+        with pytest.raises(ValidationError):
+            ExtractedCommit(text="Сделать задачу", direction="mine", confidence=-0.1)
+        
+        with pytest.raises(ValidationError):
+            ExtractedCommit(text="Сделать задачу", direction="mine", confidence=1.1)
+
+
+class TestPromptLoading:
+    """Тесты загрузки промпта."""
+    
+    def test_load_existing_prompt(self):
+        """Тест загрузки существующего промпта."""
+        prompt = _load_prompt()
+        assert isinstance(prompt, str)
+        assert len(prompt) > 100  # Промпт должен быть достаточно длинным
+        assert "коммиты" in prompt.lower() or "commit" in prompt.lower()
+
+    @patch('app.core.llm_extract_commits.PROMPT_PATH')
+    def test_load_fallback_prompt(self, mock_path):
+        """Тест загрузки fallback промпта."""
+        mock_path.exists.return_value = False
+        
+        prompt = _load_prompt()
+        assert isinstance(prompt, str)
+        assert "коммиты" in prompt.lower()
+        assert "JSON" in prompt
+
+    def test_build_messages(self):
+        """Тест построения сообщений для LLM."""
+        text = "Я подготовлю отчет до пятницы"
+        attendees = ["Valentin", "Daniil"]
+        date = "2024-12-20"
+        
+        messages = _build_messages(text, attendees, date)
+        
+        assert len(messages) == 3
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+        assert messages[2]["role"] == "user"
+        
+        # Проверяем, что данные попали в сообщения
+        user_content = messages[2]["content"]
+        assert "Valentin, Daniil" in user_content
+        assert "2024-12-20" in user_content
+        assert text in user_content
+
+
+class TestJsonProcessing:
+    """Тесты обработки JSON."""
+    
+    def test_extract_clean_json(self):
+        """Тест извлечения чистого JSON."""
+        json_str = '{"commits": [{"text": "test", "direction": "mine"}]}'
+        result = _extract_json(json_str)
+        
+        assert isinstance(result, dict)
+        assert "commits" in result
+
+    def test_extract_json_with_fences(self):
+        """Тест извлечения JSON с markdown-заборами."""
+        json_str = '```json\n{"commits": [{"text": "test", "direction": "mine"}]}\n```'
+        result = _extract_json(json_str)
+        
+        assert isinstance(result, dict)
+        assert "commits" in result
+
+    def test_extract_empty_response(self):
+        """Тест пустого ответа."""
+        with pytest.raises(ValueError, match="LLM вернул пустой ответ"):
+            _extract_json("")
+
+    def test_extract_invalid_json(self):
+        """Тест невалидного JSON."""
+        with pytest.raises(json.JSONDecodeError):
+            _extract_json("invalid json")
+
+    def test_to_models_valid(self):
+        """Тест конвертации валидных данных в модели."""
+        data = {
+            "commits": [
+                {
+                    "text": "Сделать отчет",
+                    "direction": "mine",
+                    "confidence": 0.8
+                },
+                {
+                    "text": "Проверить данные",
+                    "direction": "theirs",
+                    "assignees": ["Daniil"],
+                    "confidence": 0.9
+                }
+            ]
+        }
+        
+        result = _to_models(data)
+        
+        assert len(result) == 2
+        assert isinstance(result[0], ExtractedCommit)
+        assert result[0].text == "Сделать отчет"
+        assert result[0].direction == "mine"
+        assert result[1].assignees == ["Daniil"]
+
+    def test_to_models_with_invalid_items(self):
+        """Тест конвертации с невалидными элементами."""
+        data = {
+            "commits": [
+                {
+                    "text": "Валидный коммит",
+                    "direction": "mine",
+                    "confidence": 0.8
+                },
+                {
+                    "text": "Кор",  # слишком короткий
+                    "direction": "mine"
+                },
+                {
+                    "text": "Еще один валидный",
+                    "direction": "invalid_direction"  # невалидный direction
+                },
+                {
+                    "text": "Хороший коммит",
+                    "direction": "theirs",
+                    "confidence": 0.7
+                }
+            ]
+        }
+        
+        result = _to_models(data)
+        
+        # Должны остаться только валидные коммиты
+        assert len(result) == 2
+        assert result[0].text == "Валидный коммит"
+        assert result[1].text == "Хороший коммит"
+
+    def test_to_models_empty_commits(self):
+        """Тест пустого списка коммитов."""
+        data = {"commits": []}
+        result = _to_models(data)
+        assert result == []
+
+    def test_to_models_no_commits_key(self):
+        """Тест отсутствия ключа commits."""
+        data = {"other": "data"}
+        result = _to_models(data)
+        assert result == []
+
+
+class TestClientCreation:
+    """Тесты создания OpenAI клиента."""
+    
+    @patch('app.core.llm_extract_commits.settings')
+    def test_create_client_success(self, mock_settings):
+        """Тест успешного создания клиента."""
+        mock_settings.openai_api_key = "test-key"
+        
+        with patch('app.core.llm_extract_commits.OpenAI') as mock_openai:
+            _create_client()
+            mock_openai.assert_called_once()
+
+    @patch('app.core.llm_extract_commits.settings')
+    def test_create_client_no_key(self, mock_settings):
+        """Тест создания клиента без API ключа."""
+        mock_settings.openai_api_key = None
+        
+        with pytest.raises(RuntimeError, match="OPENAI_API_KEY отсутствует"):
+            _create_client()
+
+
+class TestExtractCommitsIntegration:
+    """Интеграционные тесты функции extract_commits."""
+    
+    @patch('app.core.llm_extract_commits._create_client')
+    def test_extract_commits_success(self, mock_create_client):
+        """Тест успешного извлечения коммитов."""
+        # Мокаем клиент и ответ
+        mock_client = Mock()
+        mock_create_client.return_value = mock_client
+        
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = json.dumps({
+            "commits": [
+                {
+                    "text": "Подготовить отчет",
+                    "direction": "mine",
+                    "confidence": 0.8,
+                    "assignees": ["Valentin"],
+                    "context": "Я подготовлю отчет до пятницы"
+                }
+            ]
+        })
+        
+        mock_client.chat.completions.create.return_value = mock_response
+        
+        # Вызываем функцию
+        result = extract_commits(
+            text="Я подготовлю отчет до пятницы",
+            attendees_en=["Valentin", "Daniil"],
+            meeting_date_iso="2024-12-20"
+        )
+        
+        # Проверяем результат
+        assert len(result) == 1
+        assert isinstance(result[0], ExtractedCommit)
+        assert result[0].text == "Подготовить отчет"
+        assert result[0].direction == "mine"
+        assert result[0].confidence == 0.8
+        
+        # Проверяем, что клиент был закрыт
+        mock_client.close.assert_called_once()
+
+    @patch('app.core.llm_extract_commits._create_client')
+    def test_extract_commits_fallback_to_no_format(self, mock_create_client):
+        """Тест fallback к режиму без response_format."""
+        mock_client = Mock()
+        mock_create_client.return_value = mock_client
+        
+        # Первый вызов возвращает не-JSON
+        mock_response_1 = Mock()
+        mock_response_1.choices = [Mock()]
+        mock_response_1.choices[0].message.content = "Не JSON ответ"
+        
+        # Второй вызов возвращает валидный JSON
+        mock_response_2 = Mock()
+        mock_response_2.choices = [Mock()]
+        mock_response_2.choices[0].message.content = json.dumps({
+            "commits": [
+                {
+                    "text": "Тестовый коммит",
+                    "direction": "theirs",
+                    "confidence": 0.7
+                }
+            ]
+        })
+        
+        mock_client.chat.completions.create.side_effect = [mock_response_1, mock_response_2]
+        
+        result = extract_commits(
+            text="Тестовый текст",
+            attendees_en=["Test"],
+            meeting_date_iso="2024-12-20"
+        )
+        
+        # Проверяем, что было два вызова
+        assert mock_client.chat.completions.create.call_count == 2
+        
+        # Первый с response_format, второй без
+        calls = mock_client.chat.completions.create.call_args_list
+        assert "response_format" in calls[0][1]
+        assert "response_format" not in calls[1][1]
+        
+        assert len(result) == 1
+        assert result[0].text == "Тестовый коммит"
+
+    @patch('app.core.llm_extract_commits._create_client')
+    def test_extract_commits_error_handling(self, mock_create_client):
+        """Тест обработки ошибок."""
+        mock_client = Mock()
+        mock_create_client.return_value = mock_client
+        
+        # Мокаем ошибку API
+        mock_client.chat.completions.create.side_effect = Exception("API Error")
+        
+        with pytest.raises(Exception, match="API Error"):
+            extract_commits(
+                text="Тестовый текст",
+                attendees_en=["Test"],
+                meeting_date_iso="2024-12-20"
+            )
+        
+        # Проверяем, что клиент был закрыт даже при ошибке
+        mock_client.close.assert_called_once()
+
+    @patch('app.core.llm_extract_commits._create_client')
+    def test_extract_commits_custom_params(self, mock_create_client):
+        """Тест с кастомными параметрами."""
+        mock_client = Mock()
+        mock_create_client.return_value = mock_client
+        
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = json.dumps({"commits": []})
+        
+        mock_client.chat.completions.create.return_value = mock_response
+        
+        extract_commits(
+            text="Тест",
+            attendees_en=["Test"],
+            meeting_date_iso="2024-12-20",
+            model="gpt-4",
+            temperature=0.5
+        )
+        
+        # Проверяем, что параметры переданы правильно
+        call_args = mock_client.chat.completions.create.call_args
+        assert call_args[1]["model"] == "gpt-4"
+        assert call_args[1]["temperature"] == 0.5
