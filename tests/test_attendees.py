@@ -56,7 +56,7 @@ def test_attendees_partial_matches():
     sample = "Встреча с Валентином и Катей"
     names = _extract_attendees_en(sample)
     assert "Valentin" in names
-    assert "Katya" in names
+    assert "Katya Zhu" in names
 
 
 def test_attendees_max_scan_limit():

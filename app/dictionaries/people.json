@@ -1,8 +1,93 @@
 {
   "people": [
-    { "name_en": "Daniil",   "aliases": ["Даня", "Даниил", "Danya", "Daniil", "даней"] },
-    { "name_en": "Valentin", "aliases": ["Валентин", "Валя", "Valentin", "Val"] },
-    { "name_en": "Katya",    "aliases": ["Катя", "Екатерина", "Katya", "Ekaterina", "Катей"] },
-    { "name_en": "Sasha Katanov", "aliases": ["Саша Катанов", "Катанов", "Katanov"] }
+    {
+      "name_en": "Daniil",
+      "aliases": [
+        "Даня",
+        "Даниил",
+        "Danya",
+        "Daniil",
+        "даней"
+      ]
+    },
+    {
+      "name_en": "Valentin",
+      "aliases": [
+        "Валентин",
+        "Валя",
+        "Valentin",
+        "Valya Dobrynin",
+        "Val"
+      ]
+    },
+    {
+      "name_en": "Katya Zhu",
+      "aliases": [
+        "Катя",
+        "Екатерина",
+        "Katya",
+        "Ekaterina",
+        "Катей"
+      ]
+    },
+    {
+      "name_en": "Sasha Katanov",
+      "aliases": [
+        "Саша Катанов",
+        "Катанов",
+        "Katanov"
+      ]
+    },
+    {
+      "name_en": "Alice Johnson",
+      "aliases": [
+        "Alice",
+        "Alice Johnson"
+      ]
+    },
+    {
+      "name_en": "Bob",
+      "aliases": [
+        "Bob"
+      ]
+    },
+    {
+      "name_en": "Charlie",
+      "aliases": [
+        "Charlie"
+      ]
+    },
+    {
+      "name_en": "Ivan Zadokhin",
+      "aliases": [
+        "Ivan Zadokhin"
+      ]
+    },
+    {
+      "name_en": "Nodari Kezua",
+      "aliases": [
+        "Nodari Kezua"
+      ]
+    },
+    {
+      "name_en": "Sergey Lompa",
+      "aliases": [
+        "Sergey Lompa"
+      ]
+    },
+    {
+      "name_en": "Vlad Sklyanov",
+      "aliases": [
+        "Vlad Sklyanov"
+      ]
+    },
+    {
+      "name_en": "Serezha Ustinenko",
+      "aliases": [
+        "Сережа Устиненко", 
+        "Sergey Ustinenko",
+        "Serezha Ustinenko"
+      ]
+    }
   ]
 }
