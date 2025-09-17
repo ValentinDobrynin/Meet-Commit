@@ -76,7 +76,7 @@ def _build_index(tags_map: dict[str, list[str]]) -> dict[str, str]:
     for canonical_tag, synonyms in tags_map.items():
         for synonym in synonyms:
             if not isinstance(synonym, str):
-                continue
+                continue  # type: ignore[unreachable]
             
             normalized_key = _normalize_token(synonym)
             if normalized_key:

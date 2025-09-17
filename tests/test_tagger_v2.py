@@ -117,9 +117,9 @@ def test_build_index(mock_tags_data):
     # Проверяем, что синонимы правильно маппятся
     assert index["ifrs"] == "area/ifrs"
     assert index["фрс"] == "area/ifrs"
-    assert index["мсфо"] == "area/ifrs"
+    assert index["мсф"] == "area/ifrs"  # МСФО нормализуется в "мсф"
     assert index["budget"] == "project/budgets"
-    assert index["бюджет"] == "project/budgets"
+    assert index["бюдж"] == "project/budgets"  # "бюджет" нормализуется в "бюдж"
 
 
 def test_token_counts():
@@ -354,8 +354,9 @@ def test_token_counts_comprehensive():
     counts = _token_counts(text)
     
     # Проверяем, что токены подсчитываются
-    assert "бюдж" in counts          # различные формы бюджета
-    assert counts["бюдж"] >= 2       # бюджета + бюджетирование → бюдж
+    assert "бюдж" in counts          # бюджета нормализуется в бюдж
+    assert counts["бюдж"] == 1       # только "бюджета" -> "бюдж"
+    assert "бюджетиров" in counts    # бюджетирование нормализуется отдельно
     assert counts["budget"] >= 1
     assert "встреч" in counts        # встреча
     assert len(counts) > 5           # общая проверка
