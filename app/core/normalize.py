@@ -183,16 +183,16 @@ def run(raw_bytes: bytes | None, text: str | None, filename: str) -> dict:
     title = (Path(filename).stem or "Meeting")[:80]
     date_iso = _infer_meeting_date(filename, clean)
     attendees = _extract_attendees_en(clean)  # английские канонические имена
-    
+
     # Собираем кандидатов в новые имена для пополнения словаря
     from app.core.people_detect import mine_alias_candidates
     from app.core.people_store import bump_candidates
-    
+
     unknown_aliases = mine_alias_candidates(clean)
     # Если есть новые кандидаты, добавляем их в очередь для ручной проверки
     if unknown_aliases:
         bump_candidates(unknown_aliases)
-    
+
     return {
         "title": title,
         "date": date_iso,

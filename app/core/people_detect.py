@@ -40,12 +40,12 @@ def _known_aliases_lower() -> set[str]:
         for alias in person.get("aliases", []):
             if alias:
                 known.add(alias.lower())
-        
+
         # Добавляем каноническое английское имя
         name_en = (person.get("name_en") or "").strip()
         if name_en:
             known.add(name_en.lower())
-    
+
     logger.debug(f"Loaded {len(known)} known aliases")
     return known
 
@@ -57,13 +57,41 @@ def _translit_ru_en(s: str) -> str:
     """
     # Расширенная таблица транслитерации
     table = {
-        "А": "A", "Б": "B", "В": "V", "Г": "G", "Д": "D", "Е": "E", "Ё": "E", 
-        "Ж": "Zh", "З": "Z", "И": "I", "Й": "Y", "К": "K", "Л": "L", "М": "M", 
-        "Н": "N", "О": "O", "П": "P", "Р": "R", "С": "S", "Т": "T", "У": "U", 
-        "Ф": "F", "Х": "Kh", "Ц": "Ts", "Ч": "Ch", "Ш": "Sh", "Щ": "Sch", 
-        "Ы": "Y", "Э": "E", "Ю": "Yu", "Я": "Ya", "Ь": "", "Ъ": ""
+        "А": "A",
+        "Б": "B",
+        "В": "V",
+        "Г": "G",
+        "Д": "D",
+        "Е": "E",
+        "Ё": "E",
+        "Ж": "Zh",
+        "З": "Z",
+        "И": "I",
+        "Й": "Y",
+        "К": "K",
+        "Л": "L",
+        "М": "M",
+        "Н": "N",
+        "О": "O",
+        "П": "P",
+        "Р": "R",
+        "С": "S",
+        "Т": "T",
+        "У": "U",
+        "Ф": "F",
+        "Х": "Kh",
+        "Ц": "Ts",
+        "Ч": "Ch",
+        "Ш": "Sh",
+        "Щ": "Sch",
+        "Ы": "Y",
+        "Э": "E",
+        "Ю": "Yu",
+        "Я": "Ya",
+        "Ь": "",
+        "Ъ": "",
     }
-    
+
     result = []
     for char in s:
         upper_char = char.upper()
@@ -75,7 +103,7 @@ def _translit_ru_en(s: str) -> str:
             result.append(transliterated)
         else:
             result.append(char)
-    
+
     return "".join(result)
 
 
@@ -85,45 +113,88 @@ def _is_valid_name_candidate(candidate: str) -> bool:
     for pattern in EXCLUDE_PATTERNS:
         if pattern.search(candidate):
             return False
-    
+
     # Проверяем длину
     if len(candidate) < 2 or len(candidate) > 50:
         return False
-    
+
     # Проверяем, что есть хотя бы одна буква
     if not re.search(r"[a-zA-Zа-яёА-ЯЁ]", candidate):
         return False
-    
+
     # Проверяем, что нет слишком много цифр
     digit_count = sum(1 for c in candidate if c.isdigit())
     if digit_count > len(candidate) // 2:
         return False
-    
-    
+
     # Требуем хотя бы одно "длинное" слово в кандидате, кроме инициалов и известных коротких имен
     words = candidate.split()
-    short_valid_names = {"bob", "tom", "jim", "joe", "ann", "sue", "tim", "sam", "max", "dan", "jon", "ben", "ron", "ray", "guy", "ted", "leo", "art", "ira", "eva", "amy", "joy", "зоя", "лев", "рим", "дан", "том", "боб", "ким", "рой", "гай", "тед", "лео", "арт", "ева", "эми"}
-    
+    short_valid_names = {
+        "bob",
+        "tom",
+        "jim",
+        "joe",
+        "ann",
+        "sue",
+        "tim",
+        "sam",
+        "max",
+        "dan",
+        "jon",
+        "ben",
+        "ron",
+        "ray",
+        "guy",
+        "ted",
+        "leo",
+        "art",
+        "ira",
+        "eva",
+        "amy",
+        "joy",
+        "зоя",
+        "лев",
+        "рим",
+        "дан",
+        "том",
+        "боб",
+        "ким",
+        "рой",
+        "гай",
+        "тед",
+        "лео",
+        "арт",
+        "ева",
+        "эми",
+    }
+
     if not any(len(w) >= 4 for w in words):
         # Исключения для:
         # 1. Инициалов типа "А. Петров"
         # 2. Коротких, но валидных имен
         is_initials = len(words) == 2 and len(words[0]) == 2 and words[0].endswith(".")
         has_short_valid_name = any(w.lower() in short_valid_names for w in words)
-        
+
         if not (is_initials or has_short_valid_name):
             return False
-    
+
     # Дополнительные проверки для русских слов
     if re.search(r"[а-яёА-ЯЁ]", candidate):
         # Исключаем очень короткие русские слова (часто служебные)
-        if len(candidate) <= 3 and candidate.lower() not in {"ваня", "катя", "петя", "коля", "маша", "даша"}:
+        if len(candidate) <= 3 and candidate.lower() not in {
+            "ваня",
+            "катя",
+            "петя",
+            "коля",
+            "маша",
+            "даша",
+        }:
             return False
-        
+
         # Исключаем слова, которые явно не имена по окончаниям
         if candidate.lower().endswith(("ость", "ение", "ание", "ться", "шься", "тся")):
             return False
-    
+
     return True
 
 
@@ -131,7 +202,7 @@ def _extract_name_candidates(text: str, max_scan: int) -> set[str]:
     """Извлекает кандидатов в имена из текста."""
     hay = text[:max_scan]
     candidates = set()
-    
+
     # Ищем латинские имена
     for match in PAT_LAT.finditer(hay):
         name_parts = [part for part in match.groups() if part]
@@ -139,7 +210,7 @@ def _extract_name_candidates(text: str, max_scan: int) -> set[str]:
             candidate = " ".join(name_parts)
             if _is_valid_name_candidate(candidate):
                 candidates.add(candidate)
-    
+
     # Ищем кириллические имена
     for match in PAT_CYR.finditer(hay):
         name_parts = [part for part in match.groups() if part]
@@ -147,66 +218,66 @@ def _extract_name_candidates(text: str, max_scan: int) -> set[str]:
             candidate = " ".join(name_parts)
             if _is_valid_name_candidate(candidate):
                 candidates.add(candidate)
-    
+
     # Ищем составные имена с дефисом
     for match in PAT_LAT_HYPHEN.finditer(hay):
         candidate = match.group(1)
         if _is_valid_name_candidate(candidate):
             candidates.add(candidate)
-    
+
     for match in PAT_CYR_HYPHEN.finditer(hay):
         candidate = match.group(1)
         if _is_valid_name_candidate(candidate):
             candidates.add(candidate)
-    
+
     # Ищем инициалы
     for match in PAT_INIT.finditer(hay):
         candidate = f"{match.group(1)}. {match.group(2)}"
         if _is_valid_name_candidate(candidate):
             candidates.add(candidate)
-    
+
     return candidates
 
 
 def mine_alias_candidates(text: str, max_scan: int = 12000) -> list[str]:
     """
     Извлекает кандидатов в алиасы людей из текста.
-    
+
     Args:
         text: Текст для анализа
         max_scan: Максимальное количество символов для сканирования
-    
+
     Returns:
         Отсортированный список уникальных кандидатов
     """
     if not text or not text.strip():
         return []
-    
+
     # Загружаем стоп-слова и известные алиасы (нормализуем к lower один раз)
     stopwords = {w.lower() for w in load_stopwords()}
     known_aliases = _known_aliases_lower()  # уже в lower
-    
+
     # Извлекаем кандидатов
     candidates = _extract_name_candidates(text, max_scan)
-    
+
     # Фильтруем кандидатов с дедупликацией кир/лат
     filtered_candidates = set()
     for candidate in candidates:
         # Нормализуем пробелы и регистр для дедупликации
         norm = " ".join(candidate.split())
         candidate_lower = norm.lower()
-        
+
         # Пропускаем уже известных
         if candidate_lower in known_aliases:
             continue
-        
+
         # Пропускаем стоп-слова (проверяем каждое слово в кандидате и весь кандидат целиком)
         words = norm.split()
         if any(word.lower() in stopwords for word in words) or candidate_lower in stopwords:
             continue
-        
+
         filtered_candidates.add(norm)
-    
+
     result = sorted(filtered_candidates)
     logger.debug(f"Found {len(result)} new name candidates in text")
     return result
@@ -227,26 +298,26 @@ def _cap_token(tok: str) -> str:
 def propose_name_en(alias: str) -> str:
     """
     Предлагает каноническое английское имя для алиаса.
-    
+
     Args:
         alias: Алиас для обработки
-    
+
     Returns:
         Предлагаемое каноническое английское имя
     """
     if not alias or not alias.strip():
         return ""
-    
+
     alias = alias.strip()
-    
+
     # Обрабатываем каждое слово отдельно (может быть смесь языков)
     words = alias.split()
     result_words = []
-    
+
     for word in words:
         if not word:
             continue
-            
+
         # Если слово содержит только латинские буквы, нормализуем капитализацию
         if re.match(r"^[A-Za-z\-'\.]+$", word):
             # Обрабатываем дефисы правильно
@@ -263,26 +334,26 @@ def propose_name_en(alias: str) -> str:
         else:
             # Для других символов просто капитализируем
             result_words.append(_cap_token(word))
-    
+
     return " ".join(result_words)
 
 
 def validate_person_entry(person_data: dict) -> list[str]:
     """
     Валидирует запись о человеке.
-    
+
     Args:
         person_data: Словарь с данными о человеке
-    
+
     Returns:
         Список ошибок валидации (пустой если все ок)
     """
     errors = []
-    
+
     # Проверяем наличие обязательных полей
     if not person_data.get("name_en"):
         errors.append("Missing required field: name_en")
-    
+
     # Валидируем и очищаем алиасы
     raw_aliases = person_data.get("aliases")
     if raw_aliases is None:
@@ -299,12 +370,12 @@ def validate_person_entry(person_data: dict) -> list[str]:
             aliases_lower = [a.lower() for a in aliases]
             if len(set(aliases_lower)) != len(aliases_lower):
                 errors.append("Aliases contain duplicates (case-insensitive)")
-    
+
     # Проверяем формат name_en
     name_en = person_data.get("name_en", "")
     if name_en and not re.match(r"^[A-Za-z\s\-'\.]+$", name_en):
         errors.append(f"Invalid name_en format: {name_en}")
-    
+
     # Дополнительная проверка очищенных алиасов
     if raw_aliases is not None and isinstance(raw_aliases, list):
         for i, alias in enumerate(raw_aliases):
@@ -312,44 +383,44 @@ def validate_person_entry(person_data: dict) -> list[str]:
                 errors.append(f"Alias at index {i} must be a string")
             elif isinstance(alias, str) and not alias.strip():
                 errors.append(f"Alias at index {i} cannot be empty")
-    
+
     return errors
 
 
 def get_detection_stats(text: str, max_scan: int = 12000) -> dict:
     """
     Возвращает статистику детекции имен в тексте.
-    
+
     Args:
         text: Текст для анализа
         max_scan: Максимальное количество символов для сканирования
-    
+
     Returns:
         Словарь со статистикой
     """
     if not text:
         return {"total_candidates": 0, "known_aliases": 0, "filtered_out": 0, "new_candidates": 0}
-    
+
     # Извлекаем всех кандидатов
     all_candidates = _extract_name_candidates(text, max_scan)
-    
+
     # Загружаем данные для фильтрации
     stopwords = load_stopwords()
     known_aliases = _known_aliases_lower()
-    
+
     known_count = 0
     filtered_count = 0
-    
+
     for candidate in all_candidates:
         candidate_lower = candidate.lower()
-        
+
         if candidate_lower in known_aliases:
             known_count += 1
         elif any(word.lower() in stopwords for word in candidate.split()):
             filtered_count += 1
-    
+
     new_candidates = len(all_candidates) - known_count - filtered_count
-    
+
     return {
         "total_candidates": len(all_candidates),
         "known_aliases": known_count,

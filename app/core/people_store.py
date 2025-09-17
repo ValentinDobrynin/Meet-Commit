@@ -64,7 +64,7 @@ def bump_candidates(aliases: Iterable[str | None]) -> None:
     """Увеличивает счетчики кандидатов для переданных алиасов."""
     data = _load_json(CAND, {"candidates": {}})
     cand: dict[str, int] = data.get("candidates", {})
-    
+
     added_count = 0
     for raw_alias in aliases:
         if raw_alias is None:
@@ -76,10 +76,10 @@ def bump_candidates(aliases: Iterable[str | None]) -> None:
         cand[alias] = old_count + 1
         if old_count == 0:
             added_count += 1
-    
+
     data["candidates"] = cand
     _save_json(CAND, data)
-    
+
     if added_count > 0:
         logger.info(f"Added {added_count} new candidates, updated counts for existing ones")
 
@@ -102,7 +102,7 @@ def remove_candidate(alias: str) -> bool:
     """Удаляет кандидата из словаря. Возвращает True если кандидат был найден и удален."""
     data: dict = _load_json(CAND, {"candidates": {}})
     cand: dict[str, int] = data.get("candidates", {})
-    
+
     if alias in cand:
         del cand[alias]
         data["candidates"] = cand
@@ -117,7 +117,7 @@ def get_candidate_stats() -> dict[str, int | float]:
     candidates = load_candidates()
     if not candidates:
         return {"total": 0, "max_count": 0, "min_count": 0}
-    
+
     counts = list(candidates.values())
     return {
         "total": len(candidates),
