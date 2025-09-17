@@ -19,7 +19,7 @@ def test_attendees_english_resolution():
     """Тест извлечения участников и их канонических английских имен."""
     sample = "Присутствовали: Валентин и Даня. Обсудили бюджет."
     names = _extract_attendees_en(sample)
-    assert "Valentin" in names
+    assert "Valya Dobrynin" in names
     assert "Daniil" in names
 
 
@@ -27,7 +27,7 @@ def test_attendees_case_insensitive():
     """Тест нечувствительности к регистру."""
     sample = "Встреча с ВАЛЕНТИНОМ и даней"
     names = _extract_attendees_en(sample)
-    assert "Valentin" in names
+    assert "Valya Dobrynin" in names
     assert "Daniil" in names
 
 
@@ -35,7 +35,7 @@ def test_attendees_no_duplicates():
     """Тест отсутствия дубликатов."""
     sample = "Валентин, Валя, Валентин - все один человек"
     names = _extract_attendees_en(sample)
-    assert names.count("Valentin") == 1
+    assert names.count("Valya Dobrynin") == 1
 
 
 def test_attendees_empty_text():
@@ -55,7 +55,7 @@ def test_attendees_partial_matches():
     """Тест частичных совпадений."""
     sample = "Встреча с Валентином и Катей"
     names = _extract_attendees_en(sample)
-    assert "Valentin" in names
+    assert "Valya Dobrynin" in names
     assert "Katya Zhu" in names
 
 
