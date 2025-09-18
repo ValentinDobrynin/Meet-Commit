@@ -1,9 +1,10 @@
-"""Тесты для app.gateways.notion_gateway"""
+"""Тесты для app.gateways.notion_gateway и notion_commits"""
 
 from unittest.mock import Mock, patch
 
 import pytest
 
+from app.gateways.notion_commits import _query_by_key, upsert_commits
 from app.gateways.notion_gateway import _client, _settings, upsert_meeting
 
 
@@ -145,3 +146,225 @@ def test_upsert_meeting_api_error():
 
             with pytest.raises(Exception, match="Notion API Error"):
                 upsert_meeting(payload)
+
+
+class TestCommitsDedupLogic:
+    """Тесты логики дедупликации коммитов."""
+
+    @patch("app.gateways.notion_commits.settings")
+    def test_query_by_key_found(self, mock_settings):
+        """Тест поиска существующего коммита по ключу."""
+        mock_settings.commits_db_id = "test_commits_db"
+
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.json.return_value = {"results": [{"id": "existing_page_id"}]}
+        mock_client.post.return_value = mock_response
+
+        result = _query_by_key(mock_client, "test_key_123")
+
+        assert result == "existing_page_id"
+        mock_client.post.assert_called_once()
+
+        # Проверяем правильность запроса
+        call_args = mock_client.post.call_args
+        assert "databases/test_commits_db/query" in call_args[0][0]
+        assert call_args[1]["json"]["filter"]["property"] == "Key"
+        assert call_args[1]["json"]["filter"]["rich_text"]["equals"] == "test_key_123"
+
+    @patch("app.gateways.notion_commits.settings")
+    def test_query_by_key_not_found(self, mock_settings):
+        """Тест поиска несуществующего коммита по ключу."""
+        mock_settings.commits_db_id = "test_commits_db"
+
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.json.return_value = {"results": []}  # пустой результат
+        mock_client.post.return_value = mock_response
+
+        result = _query_by_key(mock_client, "nonexistent_key")
+
+        assert result is None
+        mock_client.post.assert_called_once()
+
+    @patch("app.gateways.notion_commits._client")
+    @patch("app.gateways.notion_commits.settings")
+    def test_upsert_commits_create_new(self, mock_settings, mock_client_func):
+        """Тест создания новых коммитов."""
+        mock_settings.commits_db_id = "test_commits_db"
+
+        mock_client = Mock()
+        mock_client_func.return_value = mock_client
+
+        # Мокаем отсутствие существующих коммитов
+        mock_query_response = Mock()
+        mock_query_response.json.return_value = {"results": []}
+
+        # Мокаем успешное создание
+        mock_create_response = Mock()
+        mock_create_response.json.return_value = {"id": "new_commit_id"}
+
+        mock_client.post.side_effect = [mock_query_response, mock_create_response]
+
+        commits = [
+            {
+                "key": "new_commit_key",
+                "title": "New Commit",
+                "text": "Подготовить отчет",
+                "direction": "theirs",
+                "assignees": ["Daniil"],
+                "due_iso": "2024-12-31",
+                "confidence": 0.8,
+                "flags": [],
+                "tags": ["project/test"],
+            }
+        ]
+
+        result = upsert_commits("meeting_123", commits)
+
+        assert result["created"] == ["new_commit_id"]
+        assert result["updated"] == []
+        assert mock_client.post.call_count == 2  # query + create
+
+    @patch("app.gateways.notion_commits._client")
+    @patch("app.gateways.notion_commits.settings")
+    def test_upsert_commits_update_existing(self, mock_settings, mock_client_func):
+        """Тест обновления существующих коммитов."""
+        mock_settings.commits_db_id = "test_commits_db"
+
+        mock_client = Mock()
+        mock_client_func.return_value = mock_client
+
+        # Мокаем найденный существующий коммит
+        mock_query_response = Mock()
+        mock_query_response.json.return_value = {"results": [{"id": "existing_commit_id"}]}
+
+        # Мокаем успешное обновление
+        mock_update_response = Mock()
+
+        mock_client.post.return_value = mock_query_response
+        mock_client.patch.return_value = mock_update_response
+
+        commits = [
+            {
+                "key": "existing_commit_key",
+                "title": "Updated Commit",
+                "text": "Обновленный текст коммита",
+                "direction": "mine",
+                "assignees": ["Valentin"],
+                "due_iso": "2024-11-30",
+                "confidence": 0.9,
+                "flags": ["updated"],
+                "tags": ["project/updated"],
+            }
+        ]
+
+        result = upsert_commits("meeting_123", commits)
+
+        assert result["created"] == []
+        assert result["updated"] == ["existing_commit_id"]
+        assert mock_client.post.call_count == 1  # только query
+        assert mock_client.patch.call_count == 1  # update
+
+    @patch("app.gateways.notion_commits._client")
+    @patch("app.gateways.notion_commits.settings")
+    def test_upsert_commits_mixed_operations(self, mock_settings, mock_client_func):
+        """Тест смешанных операций создания и обновления."""
+        mock_settings.commits_db_id = "test_commits_db"
+
+        mock_client = Mock()
+        mock_client_func.return_value = mock_client
+
+        # Первый коммит - существующий (update)
+        # Второй коммит - новый (create)
+        query_responses = [
+            Mock(),  # для первого коммита - найден
+            Mock(),  # для второго коммита - не найден
+        ]
+        query_responses[0].json.return_value = {"results": [{"id": "existing_id"}]}
+        query_responses[1].json.return_value = {"results": []}
+
+        create_response = Mock()
+        create_response.json.return_value = {"id": "new_id"}
+        update_response = Mock()
+
+        mock_client.post.side_effect = query_responses + [create_response]
+        mock_client.patch.return_value = update_response
+
+        commits = [
+            {
+                "key": "existing_key",
+                "title": "Existing Commit",
+                "text": "Существующий коммит",
+                "direction": "theirs",
+                "assignees": ["Daniil"],
+            },
+            {
+                "key": "new_key",
+                "title": "New Commit",
+                "text": "Новый коммит",
+                "direction": "mine",
+                "assignees": ["Valentin"],
+            },
+        ]
+
+        result = upsert_commits("meeting_123", commits)
+
+        assert result["created"] == ["new_id"]
+        assert result["updated"] == ["existing_id"]
+        assert mock_client.post.call_count == 3  # 2 queries + 1 create
+        assert mock_client.patch.call_count == 1  # 1 update
+
+    @patch("app.gateways.notion_commits._client")
+    def test_upsert_commits_empty_list(self, mock_client_func):
+        """Тест обработки пустого списка коммитов."""
+        result = upsert_commits("meeting_123", [])
+
+        assert result == {"created": [], "updated": []}
+        mock_client_func.assert_not_called()  # клиент не должен создаваться
+
+    @patch("app.gateways.notion_commits._client")
+    def test_upsert_commits_invalid_data(self, mock_client_func):
+        """Тест обработки коммитов с отсутствующими полями."""
+        mock_client = Mock()
+        mock_client_func.return_value = mock_client
+
+        invalid_commits = [
+            {"title": "No key"},  # отсутствует key
+            {"key": "has_key"},  # отсутствует title и text
+            {},  # пустой объект
+        ]
+
+        result = upsert_commits("meeting_123", invalid_commits)
+
+        assert result == {"created": [], "updated": []}
+        # Клиент создается, но запросы не делаются из-за валидации
+        mock_client.post.assert_not_called()
+        mock_client.patch.assert_not_called()
+
+    @patch("app.gateways.notion_commits._client")
+    @patch("app.gateways.notion_commits.settings")
+    def test_upsert_commits_api_error_handling(self, mock_settings, mock_client_func):
+        """Тест обработки ошибок API."""
+        mock_settings.commits_db_id = "test_commits_db"
+
+        mock_client = Mock()
+        mock_client_func.return_value = mock_client
+
+        # Мокаем ошибку API
+        mock_client.post.side_effect = Exception("Notion API Error")
+
+        commits = [
+            {
+                "key": "error_key",
+                "title": "Error Commit",
+                "text": "Тестовый коммит",
+                "direction": "mine",
+            }
+        ]
+
+        with pytest.raises(Exception, match="Notion API Error"):
+            upsert_commits("meeting_123", commits)
+
+        # Проверяем, что клиент закрылся даже при ошибке
+        mock_client.close.assert_called_once()

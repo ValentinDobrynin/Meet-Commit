@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from typing import Any
 
 import httpx
 
 from app.settings import settings
+
+logger = logging.getLogger(__name__)
 
 NOTION_API = "https://api.notion.com/v1"
 
@@ -27,7 +30,18 @@ def _client() -> httpx.Client:
 
 
 def _query_by_key(client: httpx.Client, key: str) -> str | None:
-    """Находит страницу по ключу."""
+    """
+    Находит страницу коммита по уникальному ключу.
+
+    Args:
+        client: HTTP клиент для Notion API
+        key: Уникальный ключ коммита (SHA256 hash)
+
+    Returns:
+        ID страницы если найдена, иначе None
+
+    Используется для дедупликации коммитов при повторной обработке.
+    """
     payload = {
         "filter": {
             "property": "Key",
@@ -42,10 +56,16 @@ def _query_by_key(client: httpx.Client, key: str) -> str | None:
         )
         response.raise_for_status()
         results = response.json().get("results", [])
-        return results[0]["id"] if results else None
+
+        if results:
+            logger.debug(f"Found existing commit with key: {key}")
+            return str(results[0]["id"])
+        else:
+            logger.debug(f"No existing commit found for key: {key}")
+            return None
 
     except Exception as e:
-        print(f"Error in _query_by_key: {type(e).__name__}: {e}")
+        logger.error(f"Error in _query_by_key: {type(e).__name__}: {e}")
         raise
 
 
@@ -70,7 +90,7 @@ def _props_commit(item: dict, meeting_page_id: str) -> dict[str, Any]:
 
 def upsert_commits(meeting_page_id: str, commits: list[dict]) -> dict[str, list[str]]:
     """
-    Создает или обновляет коммиты в базе данных.
+    Создает или обновляет коммиты в базе данных с дедупликацией по ключу.
 
     Args:
         meeting_page_id: ID страницы встречи в Notion
@@ -78,20 +98,34 @@ def upsert_commits(meeting_page_id: str, commits: list[dict]) -> dict[str, list[
 
     Returns:
         Словарь с ID созданных и обновленных страниц
+
+    Логика дедупликации:
+        1. Для каждого коммита ищем существующую запись по полю Key
+        2. Если найдена - обновляем (update)
+        3. Если не найдена - создаем новую (create)
+
+    Это предотвращает создание дубликатов при повторной обработке
+    одних и тех же встреч или коммитов.
     """
     if not commits:
+        logger.info("No commits to process")
         return {"created": [], "updated": []}
 
     created, updated = [], []
     client = _client()
 
     try:
+        logger.info(f"Processing {len(commits)} commits for meeting {meeting_page_id}")
+
         for item in commits:
             # Валидация обязательных полей
             if not item.get("key") or not item.get("title") or not item.get("text"):
-                print(f"Skipping commit with missing required fields: {item}")
+                logger.warning(
+                    f"Skipping commit with missing required fields: {item.get('title', 'Unknown')}"
+                )
                 continue
 
+            # Поиск существующего коммита по ключу (дедупликация)
             page_id = _query_by_key(client, item["key"])
             props = _props_commit(item, meeting_page_id)
 
@@ -100,6 +134,7 @@ def upsert_commits(meeting_page_id: str, commits: list[dict]) -> dict[str, list[
                 response = client.patch(f"{NOTION_API}/pages/{page_id}", json={"properties": props})
                 response.raise_for_status()
                 updated.append(page_id)
+                logger.debug(f"Updated existing commit: {item.get('title', 'Unknown')}")
             else:
                 # Создаем новую страницу
                 response = client.post(
@@ -108,11 +143,13 @@ def upsert_commits(meeting_page_id: str, commits: list[dict]) -> dict[str, list[
                 )
                 response.raise_for_status()
                 created.append(response.json()["id"])
+                logger.debug(f"Created new commit: {item.get('title', 'Unknown')}")
 
     except Exception as e:
-        print(f"Error in upsert_commits: {type(e).__name__}: {e}")
+        logger.error(f"Error in upsert_commits: {type(e).__name__}: {e}")
         raise
     finally:
         client.close()
 
+    logger.info(f"Commits processing completed: {len(created)} created, {len(updated)} updated")
     return {"created": created, "updated": updated}
