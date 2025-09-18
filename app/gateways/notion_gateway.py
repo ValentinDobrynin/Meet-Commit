@@ -35,7 +35,7 @@ def _client():
 
 def _props(payload: dict[str, Any]) -> dict[str, Any]:
     """Собирает properties под фактические поля базы."""
-    name = payload["title"][:200] if payload.get("title") else "Meeting"
+    name = (payload.get("title") or "Untitled Meeting")[:200]
     date = payload.get("date")  # ISO YYYY-MM-DD
     attendees: list[str] = payload.get("attendees", [])
     source = payload.get("source", "telegram")

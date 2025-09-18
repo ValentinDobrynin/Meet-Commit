@@ -155,21 +155,42 @@ async def extra_entered(msg: Message, state: FSMContext):
 
 def _extract_page_id_from_url(notion_url: str) -> str:
     """
-    Извлекает page_id из Notion URL.
+    Извлекает page_id из Notion URL и форматирует в правильный UUID.
 
     Args:
         notion_url: URL страницы Notion
 
     Returns:
-        Page ID для использования в API
+        Page ID в формате UUID для использования в API
 
     Example:
-        https://notion.so/page_123abc -> page_123abc
+        https://notion.so/mock-tr6-272344c5676681a6b2a4f9c9df62305f -> 272344c5-6766-81a6-b2a4-f9c9df62305f
     """
     # Notion URLs обычно имеют формат: https://notion.so/{page_id}
     # или https://www.notion.so/{workspace}/{page_id}
     parts = notion_url.rstrip("/").split("/")
-    return parts[-1]
+    page_id_raw = parts[-1]
+
+    # Убираем префиксы и извлекаем только hex часть
+    if len(page_id_raw) == 36 and page_id_raw.count("-") == 4:
+        # Уже в UUID формате
+        return page_id_raw
+    elif len(page_id_raw) > 32:
+        # Есть префикс, берем последние 32 hex символа
+        hex_part = page_id_raw[-32:]
+    else:
+        # Убираем все дефисы и работаем с hex
+        hex_part = page_id_raw.replace("-", "")
+
+    # Форматируем в UUID: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+    if len(hex_part) == 32:
+        formatted_uuid = (
+            f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}-{hex_part[16:20]}-{hex_part[20:32]}"
+        )
+        return formatted_uuid
+    else:
+        # Если не можем распарсить, возвращаем как есть
+        return page_id_raw
 
 
 async def run_commits_pipeline(
@@ -178,6 +199,7 @@ async def run_commits_pipeline(
     attendees_en: list[str],
     meeting_date_iso: str,
     meeting_tags: list[str] | None,
+    msg: Message | None = None,
 ) -> dict[str, int]:
     """
     Обрабатывает коммиты для встречи: извлекает, нормализует, валидирует и сохраняет.
@@ -243,9 +265,13 @@ async def run_commits_pipeline(
         # 5) Отправка проблемных коммитов в Review Queue (в executor, т.к. синхронный)
         review_ids: list[str] = []
         if partition_result.to_review:
-            review_ids = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: enqueue(partition_result.to_review, meeting_page_id)
-            )
+            try:
+                review_ids = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: enqueue(partition_result.to_review, meeting_page_id)
+                )
+            except Exception as e:
+                logger.error(f"Error enqueueing review items: {e}")
+                # Продолжаем работу даже если Review Queue не работает
 
         stats = {
             "created": len(commits_result.get("created", [])),
@@ -323,6 +349,7 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
                 attendees_en=meta.get("attendees", []),
                 meeting_date_iso=meta["date"],
                 meeting_tags=tags,
+                msg=msg,  # Передаем message для отладки
             )
 
             # Формируем отчет по коммитам
@@ -336,7 +363,15 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
 
         except Exception as e:
             logger.exception(f"Error in commits pipeline: {e}")
-            commits_report = "⚠️ <b>Коммиты:</b> ошибка обработки, встреча сохранена."
+            # Более детальная информация об ошибке для отладки
+            if "COMMITS_DB_ID" in str(e) or "REVIEW_DB_ID" in str(e):
+                commits_report = "⚠️ <b>Коммиты:</b> не настроены базы данных Notion (COMMITS_DB_ID/REVIEW_DB_ID)."
+            elif "400 Bad Request" in str(e):
+                commits_report = (
+                    "⚠️ <b>Коммиты:</b> ошибка Notion API (проверьте настройки баз данных)."
+                )
+            else:
+                commits_report = "⚠️ <b>Коммиты:</b> ошибка обработки, встреча сохранена."
 
         # 6) Финальный ответ
         preview = "\n".join(summary_md.splitlines()[:MAX_PREVIEW_LINES])

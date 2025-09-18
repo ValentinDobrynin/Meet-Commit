@@ -187,7 +187,7 @@ class TestCommitsDedupLogic:
         assert result is None
         mock_client.post.assert_called_once()
 
-    @patch("app.gateways.notion_commits._client")
+    @patch("app.gateways.notion_commits._create_client")
     @patch("app.gateways.notion_commits.settings")
     def test_upsert_commits_create_new(self, mock_settings, mock_client_func):
         """Тест создания новых коммитов."""
@@ -226,7 +226,7 @@ class TestCommitsDedupLogic:
         assert result["updated"] == []
         assert mock_client.post.call_count == 2  # query + create
 
-    @patch("app.gateways.notion_commits._client")
+    @patch("app.gateways.notion_commits._create_client")
     @patch("app.gateways.notion_commits.settings")
     def test_upsert_commits_update_existing(self, mock_settings, mock_client_func):
         """Тест обновления существующих коммитов."""
@@ -266,7 +266,7 @@ class TestCommitsDedupLogic:
         assert mock_client.post.call_count == 1  # только query
         assert mock_client.patch.call_count == 1  # update
 
-    @patch("app.gateways.notion_commits._client")
+    @patch("app.gateways.notion_commits._create_client")
     @patch("app.gateways.notion_commits.settings")
     def test_upsert_commits_mixed_operations(self, mock_settings, mock_client_func):
         """Тест смешанных операций создания и обновления."""
@@ -315,7 +315,7 @@ class TestCommitsDedupLogic:
         assert mock_client.post.call_count == 3  # 2 queries + 1 create
         assert mock_client.patch.call_count == 1  # 1 update
 
-    @patch("app.gateways.notion_commits._client")
+    @patch("app.gateways.notion_commits._create_client")
     def test_upsert_commits_empty_list(self, mock_client_func):
         """Тест обработки пустого списка коммитов."""
         result = upsert_commits("meeting_123", [])
@@ -323,7 +323,7 @@ class TestCommitsDedupLogic:
         assert result == {"created": [], "updated": []}
         mock_client_func.assert_not_called()  # клиент не должен создаваться
 
-    @patch("app.gateways.notion_commits._client")
+    @patch("app.gateways.notion_commits._create_client")
     def test_upsert_commits_invalid_data(self, mock_client_func):
         """Тест обработки коммитов с отсутствующими полями."""
         mock_client = Mock()
@@ -342,7 +342,7 @@ class TestCommitsDedupLogic:
         mock_client.post.assert_not_called()
         mock_client.patch.assert_not_called()
 
-    @patch("app.gateways.notion_commits._client")
+    @patch("app.gateways.notion_commits._create_client")
     @patch("app.gateways.notion_commits.settings")
     def test_upsert_commits_api_error_handling(self, mock_settings, mock_client_func):
         """Тест обработки ошибок API."""

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
 from typing import Any
 
 import httpx
@@ -15,9 +14,8 @@ logger = logging.getLogger(__name__)
 NOTION_API = "https://api.notion.com/v1"
 
 
-@lru_cache(maxsize=1)
-def _client() -> httpx.Client:
-    """Создает HTTP клиент для Notion API с кэшированием."""
+def _create_client() -> httpx.Client:
+    """Создает новый HTTP клиент для Notion API."""
     if not settings.notion_token or not settings.commits_db_id:
         raise RuntimeError("Notion credentials missing: NOTION_TOKEN or COMMITS_DB_ID")
 
@@ -51,9 +49,12 @@ def _query_by_key(client: httpx.Client, key: str) -> str | None:
     }
 
     try:
+        logger.debug(f"Querying for key: {key}")
+        logger.debug(f"Query payload: {payload}")
         response = client.post(
             f"{NOTION_API}/databases/{settings.commits_db_id}/query", json=payload
         )
+        logger.debug(f"Query response status: {response.status_code}")
         response.raise_for_status()
         results = response.json().get("results", [])
 
@@ -73,7 +74,7 @@ def _props_commit(item: dict, meeting_page_id: str) -> dict[str, Any]:
     """Создает properties для страницы Commit."""
     due = item.get("due_iso")
 
-    return {
+    props = {
         "Name": {"title": [{"text": {"content": item["title"][:200]}}]},
         "Text": {"rich_text": [{"text": {"content": item["text"][:1800]}}]},
         "Direction": {"select": {"name": item["direction"]}},
@@ -86,6 +87,9 @@ def _props_commit(item: dict, meeting_page_id: str) -> dict[str, Any]:
         "Status": {"select": {"name": item.get("status", "open")}},
         "Tags": {"multi_select": [{"name": t} for t in (item.get("tags") or [])]},
     }
+    logger.debug(f"Created props for commit: {item.get('title', 'Unknown')}")
+    logger.debug(f"Props: {props}")
+    return props
 
 
 def upsert_commits(meeting_page_id: str, commits: list[dict]) -> dict[str, list[str]]:
@@ -112,7 +116,7 @@ def upsert_commits(meeting_page_id: str, commits: list[dict]) -> dict[str, list[
         return {"created": [], "updated": []}
 
     created, updated = [], []
-    client = _client()
+    client = _create_client()
 
     try:
         logger.info(f"Processing {len(commits)} commits for meeting {meeting_page_id}")
@@ -141,6 +145,7 @@ def upsert_commits(meeting_page_id: str, commits: list[dict]) -> dict[str, list[
                     f"{NOTION_API}/pages",
                     json={"parent": {"database_id": settings.commits_db_id}, "properties": props},
                 )
+                logger.debug(f"Notion create commits http={response.status_code}")
                 response.raise_for_status()
                 created.append(response.json()["id"])
                 logger.debug(f"Created new commit: {item.get('title', 'Unknown')}")

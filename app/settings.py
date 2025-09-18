@@ -1,6 +1,6 @@
 import os
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,14 +17,17 @@ class Settings(BaseSettings):
     # Notion settings
     notion_token: str | None = None
     notion_db_meetings_id: str | None = None
-    commits_db_id: str | None = None
-    review_db_id: str | None = None
+
+    # Эти переменные читаются без APP_ префикса
+    commits_db_id: str | None = Field(default=None, alias="COMMITS_DB_ID")
+    review_db_id: str | None = Field(default=None, alias="REVIEW_DB_ID")
 
     model_config = SettingsConfigDict(
         env_prefix="APP_",
         env_file=os.getenv("ENV_FILE", ".env"),
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,  # Позволяет использовать alias для переменных окружения
     )
 
 

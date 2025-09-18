@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import Any
 
 import httpx
@@ -12,9 +11,8 @@ from app.settings import settings
 NOTION_API = "https://api.notion.com/v1"
 
 
-@lru_cache(maxsize=1)
-def _client() -> httpx.Client:
-    """Создает HTTP клиент для Notion API с кэшированием."""
+def _create_client() -> httpx.Client:
+    """Создает новый HTTP клиент для Notion API."""
     if not settings.notion_token or not settings.review_db_id:
         raise RuntimeError("Notion credentials missing: NOTION_TOKEN or REVIEW_DB_ID")
 
@@ -60,7 +58,7 @@ def enqueue(items: list[dict], meeting_page_id: str) -> list[str]:
         return []
 
     ids: list[str] = []
-    client = _client()
+    client = _create_client()
 
     try:
         for item in items:
@@ -89,7 +87,7 @@ def set_status(page_id: str, status: str) -> None:
         page_id: ID страницы в Notion
         status: Новый статус (pending, confirmed, rejected)
     """
-    client = _client()
+    client = _create_client()
 
     try:
         response = client.patch(

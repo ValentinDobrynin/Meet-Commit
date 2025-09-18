@@ -148,7 +148,7 @@ def parse_due_iso(text: str, meeting_date_iso: str) -> str | None:
         - Словесные: "15 марта 2024", "Mar 15, 2024"
         - Частичные: "15.12" (без года)
     """
-    if not text:
+    if not text or not meeting_date_iso:
         return None
 
     # ISO формат: 2024-12-31
