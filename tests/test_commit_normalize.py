@@ -21,6 +21,7 @@ from app.core.commit_normalize import (
     normalize_assignees,
     normalize_commits,
     parse_due_iso,
+    validate_date_iso,
 )
 from app.core.llm_extract_commits import ExtractedCommit
 
@@ -461,3 +462,36 @@ class TestEdgeCases:
         key2 = build_key("Задача с эмодзи 🚀", ["Тест"], None)
         assert key1 == key2
         assert len(key1) == 64  # SHA256 hex length
+
+
+# ====== Тесты для validate_date_iso ======
+
+
+def test_validate_date_iso_valid():
+    """Тест валидации корректных ISO дат"""
+    assert validate_date_iso("2024-12-31") == "2024-12-31"
+    assert validate_date_iso("2025-01-01") == "2025-01-01"
+    assert validate_date_iso("2024-02-29") == "2024-02-29"  # Високосный год
+
+
+def test_validate_date_iso_invalid():
+    """Тест валидации некорректных дат"""
+    assert validate_date_iso("2023-02-29") is None  # Не високосный год
+    assert validate_date_iso("2024-13-01") is None  # Несуществующий месяц
+    assert validate_date_iso("2024-12-32") is None  # Несуществующий день
+    assert validate_date_iso("31/12/2024") is None  # Неправильный формат
+    assert validate_date_iso("2024/12/31") is None  # Неправильный формат
+    assert validate_date_iso("Dec 31, 2024") is None  # Неправильный формат
+
+
+def test_validate_date_iso_empty():
+    """Тест валидации пустых значений"""
+    assert validate_date_iso("") is None
+    assert validate_date_iso("   ") is None
+    assert validate_date_iso(None) is None
+
+
+def test_validate_date_iso_whitespace():
+    """Тест валидации с пробелами"""
+    assert validate_date_iso("  2024-12-31  ") == "2024-12-31"
+    assert validate_date_iso("\t2025-01-01\n") == "2025-01-01"

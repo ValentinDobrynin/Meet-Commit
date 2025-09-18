@@ -130,6 +130,31 @@ def _infer_year_for_partial(month: int, day: int, meeting_date: date) -> int:
         return meeting_date.year - 1
 
 
+def validate_date_iso(date_str: str | None) -> str | None:
+    """
+    Валидирует ISO дату, возвращает валидную дату или None.
+
+    Args:
+        date_str: Строка даты для валидации
+
+    Returns:
+        Валидная ISO дата (YYYY-MM-DD) или None
+
+    Example:
+        validate_date_iso("2024-12-31") -> "2024-12-31"
+        validate_date_iso("31/12/2024") -> None
+        validate_date_iso("") -> None
+    """
+    if not date_str:
+        return None
+
+    try:
+        date.fromisoformat(date_str.strip())
+        return date_str.strip()
+    except ValueError:
+        return None
+
+
 def parse_due_iso(text: str, meeting_date_iso: str) -> str | None:
     """
     Извлекает дату дедлайна из текста.
@@ -182,7 +207,12 @@ def parse_due_iso(text: str, meeting_date_iso: str) -> str | None:
                 continue
 
             if year_str is None:
-                meeting_date = date.fromisoformat(meeting_date_iso)
+                if not meeting_date_iso:
+                    continue
+                try:
+                    meeting_date = date.fromisoformat(meeting_date_iso)
+                except ValueError:
+                    continue
                 year = _infer_year_for_partial(int(month_str), day, meeting_date)
             else:
                 year = int(year_str)
@@ -192,8 +222,13 @@ def parse_due_iso(text: str, meeting_date_iso: str) -> str | None:
     # D.M формат без года: 31.12
     match = PAT_DMY_SHORT.search(text)
     if match:
+        if not meeting_date_iso:
+            return None
+        try:
+            meeting_date = date.fromisoformat(meeting_date_iso)
+        except ValueError:
+            return None
         day, month = map(int, match.groups())
-        meeting_date = date.fromisoformat(meeting_date_iso)
         year = _infer_year_for_partial(month, day, meeting_date)
         return _safe_date(year, month, day)
 

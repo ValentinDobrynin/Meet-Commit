@@ -11,11 +11,12 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from app.core.commit_normalize import normalize_commits
+from app.core.commit_normalize import normalize_commits, validate_date_iso
 from app.core.commit_validate import validate_and_partition
 from app.core.llm_extract_commits import extract_commits
 from app.core.llm_summarize import run as summarize_run
 from app.core.normalize import run as normalize_run
+from app.core.people_store import canonicalize_list
 from app.core.tagger import run as tagger_run
 from app.gateways.notion_commits import upsert_commits
 from app.gateways.notion_gateway import upsert_meeting
@@ -235,6 +236,10 @@ async def run_commits_pipeline(
         )
         logger.info(f"Extracted {len(extracted_commits)} commits from LLM")
 
+        # DEBUG: Показываем что извлек LLM
+        if msg:
+            await msg.answer(f"[debug] extracted={len(extracted_commits)}")
+
         # 2) Нормализация (исполнители, дедлайны, title, key)
         normalized_commits = normalize_commits(
             extracted_commits,
@@ -253,6 +258,12 @@ async def run_commits_pipeline(
         logger.info(
             f"Partitioned commits: {len(partition_result.to_commits)} to store, {len(partition_result.to_review)} to review"
         )
+
+        # DEBUG: Показываем результат партиционирования
+        if msg:
+            await msg.answer(
+                f"[debug] to_commits={len(partition_result.to_commits)} to_review={len(partition_result.to_review)}"
+            )
 
         # 4) Сохранение качественных коммитов в Commits (в executor, т.к. синхронный)
         commits_result: dict[str, list[str]] = {"created": [], "updated": []}
@@ -320,12 +331,31 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
         # Уведомляем о сохранении в Notion
         await msg.answer("💾 <b>Сохраняю в Notion...</b>\n\n📝 Создаю страницу в базе данных...")
 
-        # 4) Notion upsert
+        # 4) Подготовка данных для Notion
+        # Канонизируем участников к EN именам
+        raw_attendees = meta.get("attendees", [])
+        attendees_en = canonicalize_list(raw_attendees)
+
+        # Валидируем и подготавливаем дату встречи
+        raw_date = meta.get("date", "").strip()
+        meeting_date_iso = validate_date_iso(raw_date)
+
+        if not meeting_date_iso:
+            # Если дата невалидна или отсутствует, используем дату сообщения
+            meeting_date_iso = msg.date.date().isoformat()
+            if raw_date:
+                logger.warning(
+                    f"Invalid date format '{raw_date}', using message date: {meeting_date_iso}"
+                )
+            else:
+                logger.info(f"No date found in transcript, using message date: {meeting_date_iso}")
+
+        # Notion upsert с канонизированными данными
         notion_url = upsert_meeting(
             {
                 "title": meta["title"],
-                "date": meta["date"],
-                "attendees": meta.get("attendees", []),
+                "date": meeting_date_iso,
+                "attendees": attendees_en,  # Канонические EN имена
                 "source": "telegram",
                 "raw_hash": meta["raw_hash"],
                 "summary_md": summary_md,
@@ -342,12 +372,12 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
             # Извлекаем page_id из URL для связи коммитов с встречей
             meeting_page_id = _extract_page_id_from_url(notion_url)
 
-            # Запускаем пайплайн коммитов асинхронно
+            # Запускаем пайплайн коммитов с теми же канонизированными данными
             stats = await run_commits_pipeline(
                 meeting_page_id=meeting_page_id,
                 meeting_text=meta["text"],
-                attendees_en=meta.get("attendees", []),
-                meeting_date_iso=meta["date"],
+                attendees_en=attendees_en,  # Те же канонические EN имена
+                meeting_date_iso=meeting_date_iso,  # Валидированная ISO дата
                 meeting_tags=tags,
                 msg=msg,  # Передаем message для отладки
             )

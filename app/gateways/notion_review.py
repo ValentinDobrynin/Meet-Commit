@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
 
 from app.settings import settings
+
+logger = logging.getLogger(__name__)
 
 NOTION_API = "https://api.notion.com/v1"
 
@@ -34,7 +37,7 @@ def _props_review(item: dict, meeting_page_id: str) -> dict[str, Any]:
         "Commit text": {"rich_text": [{"text": {"content": (item.get("text") or "")[:1800]}}]},
         "Direction": {"select": {"name": item.get("direction", "theirs")}},
         "Assignee": {"multi_select": [{"name": a} for a in (item.get("assignees") or [])]},
-        "Due": {"date": {"start": due}} if due else {"date": {"start": None}},
+        "Due": {"date": {"start": due} if due else None},
         "Confidence": {"number": float(item.get("confidence", 0.0))},
         "Reason": {"multi_select": [{"name": r} for r in (item.get("reasons") or [])]},
         "Context": {"rich_text": [{"text": {"content": (item.get("context") or "")[:1800]}}]},
@@ -67,6 +70,11 @@ def enqueue(items: list[dict], meeting_page_id: str) -> list[str]:
                 f"{NOTION_API}/pages",
                 json={"parent": {"database_id": settings.review_db_id}, "properties": props},
             )
+            if response.status_code != 200:
+                logger.error(f"Review API Error {response.status_code}: {response.text}")
+                logger.error(
+                    f"Review Payload: {{'parent': {{'database_id': '{settings.review_db_id}'}}, 'properties': {props}}}"
+                )
             response.raise_for_status()
             ids.append(response.json()["id"])
 

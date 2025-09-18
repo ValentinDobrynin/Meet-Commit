@@ -98,6 +98,61 @@ def clear_candidates() -> None:
     logger.info("Cleared candidates dictionary")
 
 
+def _build_alias_index() -> dict[str, str]:
+    """
+    Строит индекс alias/lower -> name_en для канонизации имен.
+
+    Returns:
+        Словарь, где ключи - lowercase алиасы, значения - канонические EN имена
+    """
+    idx: dict[str, str] = {}
+    for p in load_people():
+        name_en = (p.get("name_en") or "").strip()
+        if not name_en:
+            continue
+        idx[name_en.lower()] = name_en
+        for alias in p.get("aliases", []):
+            if alias:
+                idx[alias.lower()] = name_en
+    return idx
+
+
+def canonicalize_list(raw_names: list[str]) -> list[str]:
+    """
+    Превращает сырые имена в канонические EN из словаря people.json.
+    Удаляет дубли и игнорирует неизвестных.
+
+    Args:
+        raw_names: Список сырых имен (могут быть русские, алиасы, с опечатками)
+
+    Returns:
+        Список канонических EN имен без дубликатов
+
+    Example:
+        ["Валентин", "Daniil", "валентин"] -> ["Valentin", "Daniil"]
+    """
+    idx = _build_alias_index()
+    seen: set[str] = set()
+    out: list[str] = []
+
+    for raw_name in raw_names or []:
+        key = (raw_name or "").strip().lower()
+        if not key:
+            continue
+
+        name_en = idx.get(key)
+        if not name_en:
+            continue
+
+        if name_en.lower() in seen:
+            continue
+
+        seen.add(name_en.lower())
+        out.append(name_en)
+
+    return out
+
+
 def remove_candidate(alias: str) -> bool:
     """Удаляет кандидата из словаря. Возвращает True если кандидат был найден и удален."""
     data: dict = _load_json(CAND, {"candidates": {}})

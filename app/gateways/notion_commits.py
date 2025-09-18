@@ -74,12 +74,22 @@ def _props_commit(item: dict, meeting_page_id: str) -> dict[str, Any]:
     """Создает properties для страницы Commit."""
     due = item.get("due_iso")
 
+    # Обеспечиваем читаемый Name даже если title не задан
+    title = (item.get("title") or "").strip()[:200]
+    if not title:
+        # Fallback: создаем title из owner + text + due
+        assignees = item.get("assignees") or []
+        owner = assignees[0] if assignees else "Unassigned"
+        base_text = (item.get("text") or "").strip().replace("\n", " ")[:80]
+        due_suffix = f" [due {due}]" if due else ""
+        title = f"{owner}: {base_text}{due_suffix}"
+
     props = {
-        "Name": {"title": [{"text": {"content": item["title"][:200]}}]},
+        "Name": {"title": [{"text": {"content": title}}]},
         "Text": {"rich_text": [{"text": {"content": item["text"][:1800]}}]},
         "Direction": {"select": {"name": item["direction"]}},
         "Assignee": {"multi_select": [{"name": a} for a in (item.get("assignees") or [])]},
-        "Due": {"date": {"start": due}} if due else {"date": {"start": None}},
+        "Due": {"date": {"start": due} if due else None},
         "Confidence": {"number": float(item.get("confidence", 0.0))},
         "Flags": {"multi_select": [{"name": f} for f in (item.get("flags") or [])]},
         "Meeting": {"relation": [{"id": meeting_page_id}]},
@@ -146,6 +156,11 @@ def upsert_commits(meeting_page_id: str, commits: list[dict]) -> dict[str, list[
                     json={"parent": {"database_id": settings.commits_db_id}, "properties": props},
                 )
                 logger.debug(f"Notion create commits http={response.status_code}")
+                if response.status_code != 200:
+                    logger.error(f"Notion API Error {response.status_code}: {response.text}")
+                    logger.error(
+                        f"Payload was: {{'parent': {{'database_id': '{settings.commits_db_id}'}}, 'properties': {props}}}"
+                    )
                 response.raise_for_status()
                 created.append(response.json()["id"])
                 logger.debug(f"Created new commit: {item.get('title', 'Unknown')}")

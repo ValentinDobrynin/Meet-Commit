@@ -45,7 +45,7 @@ def _props(payload: dict[str, Any]) -> dict[str, Any]:
 
     props = {
         "Name": {"title": [{"text": {"content": name}}]},
-        "Date": {"date": {"start": date}} if date else {"date": {"start": None}},
+        "Date": {"date": {"start": date} if date else None},
         "Attendees": {"multi_select": [{"name": a} for a in attendees]},
         "Source": {"rich_text": [{"text": {"content": source}}]},
         "Raw hash": {"rich_text": [{"text": {"content": raw_hash}}]},
