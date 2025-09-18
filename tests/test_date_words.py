@@ -35,7 +35,7 @@ def test_infer_date_from_words_russian_full():
     """Тест извлечения русских дат с годом."""
     dt = _infer_date_from_words("Встреча 25 марта 2025, обсуждение бюджета")
     assert dt == date(2025, 3, 25)
-    
+
     dt = _infer_date_from_words("Планерка 7 октября 2024")
     assert dt == date(2024, 10, 7)
 
@@ -53,7 +53,7 @@ def test_infer_date_from_words_english_dmy():
     """Тест извлечения английских дат в формате DMY."""
     dt = _infer_date_from_words("Meeting on 12 September 2024")
     assert dt == date(2024, 9, 12)
-    
+
     dt = _infer_date_from_words("Review 5 Dec 2025")
     assert dt == date(2025, 12, 5)
 
@@ -62,7 +62,7 @@ def test_infer_date_from_words_english_mdy():
     """Тест извлечения английских дат в формате MDY."""
     dt = _infer_date_from_words("Kickoff on Mar 5, 2024")
     assert dt == date(2024, 3, 5)
-    
+
     dt = _infer_date_from_words("Planning session Sept 15, 2025")
     assert dt == date(2025, 9, 15)
 
@@ -71,7 +71,7 @@ def test_infer_date_from_words_no_match():
     """Тест когда дата не найдена."""
     dt = _infer_date_from_words("Встреча без даты")
     assert dt is None
-    
+
     dt = _infer_date_from_words("Meeting with no date info")
     assert dt is None
 
@@ -80,7 +80,7 @@ def test_infer_date_from_words_invalid_date():
     """Тест обработки невалидных дат."""
     dt = _infer_date_from_words("32 марта 2025")  # несуществующая дата
     assert dt is None
-    
+
     dt = _infer_date_from_words("31 февраля 2025")  # несуществующая дата
     assert dt is None
 
@@ -108,7 +108,7 @@ def test_infer_meeting_date_fallback_chain():
     text = "Встреча 15.01.2025"
     iso = _infer_meeting_date("meeting.txt", text)
     assert iso == "2025-01-15"
-    
+
     # Никаких дат - fallback к сегодня
     text = "Встреча без даты"
     iso = _infer_meeting_date("meeting.txt", text)
@@ -116,6 +116,7 @@ def test_infer_meeting_date_fallback_chain():
 
 
 # === Интеграционные тесты ===
+
 
 def test_ru_words_full():
     """Тест полных русских дат."""
@@ -146,7 +147,7 @@ def test_mixed_language_dates():
     # Русская дата должна быть найдена
     iso = _infer_meeting_date("meeting.txt", "Meeting 15 марта 2025 with team")
     assert iso == "2025-03-15"
-    
+
     # Английская дата должна быть найдена
     iso = _infer_meeting_date("meeting.txt", "Встреча Apr 20, 2025 с командой")
     assert iso == "2025-04-20"
@@ -160,7 +161,7 @@ def test_complex_text_parsing():
     Также обсудили встречу на следующей неделе.
     Контакты: alice@example.com, bob@company.org
     """
-    
+
     iso = _infer_meeting_date("complex_meeting.txt", complex_text)
     assert iso == "2025-04-15"
 
@@ -169,7 +170,7 @@ def test_date_with_time_context():
     """Тест дат с контекстом времени."""
     iso = _infer_meeting_date("meeting.txt", "Встреча 25 декабря 2024 в 14:00")
     assert iso == "2024-12-25"
-    
+
     iso = _infer_meeting_date("meeting.txt", "Planning session Dec 31, 2024 at 3pm")
     assert iso == "2024-12-31"
 
@@ -193,12 +194,12 @@ def test_edge_cases():
     # Очень короткий текст
     iso = _infer_meeting_date("meeting.txt", "25 мар")
     assert iso.endswith("-03-25")
-    
+
     # Дата в конце текста
     long_text = "Очень длинный текст " * 100 + " встреча 15 июня 2025"
     iso = _infer_meeting_date("meeting.txt", long_text)
     assert iso == "2025-06-15"
-    
+
     # Пустой текст
     iso = _infer_meeting_date("meeting.txt", "")
     assert iso == date.today().isoformat()
@@ -208,6 +209,6 @@ def test_case_insensitive_parsing():
     """Тест нечувствительности к регистру."""
     iso = _infer_meeting_date("meeting.txt", "ВСТРЕЧА 25 МАРТА 2025")
     assert iso == "2025-03-25"
-    
+
     iso = _infer_meeting_date("meeting.txt", "meeting on MARCH 15, 2025")
     assert iso == "2025-03-15"

@@ -16,15 +16,18 @@ from app.settings import settings
 
 Direction = Literal["mine", "theirs"]
 
+
 class ExtractedCommit(BaseModel):
     text: str = Field(..., min_length=8)
     direction: Direction
     assignees: list[str] = Field(default_factory=list)  # EN-имена, нормализуем на шаге 2.2
-    due_iso: str | None = None                          # YYYY-MM-DD или None (строгих дат нет — шаг 2.2)
+    due_iso: str | None = None  # YYYY-MM-DD или None (строгих дат нет — шаг 2.2)
     confidence: float = Field(ge=0.0, le=1.0, default=0.5)
-    flags: list[str] = Field(default_factory=list)      # ["no_explicit_subject", "unclear_deadline", ...]
-    context: str | None = None                          # сырой фрагмент
-    reasoning: str | None = None                        # краткое объяснение
+    flags: list[str] = Field(
+        default_factory=list
+    )  # ["no_explicit_subject", "unclear_deadline", ...]
+    context: str | None = None  # сырой фрагмент
+    reasoning: str | None = None  # краткое объяснение
 
     @field_validator("assignees")
     @classmethod
@@ -43,6 +46,7 @@ class ExtractedCommit(BaseModel):
 
 PROMPT_PATH = Path("prompts/commits_extract_ru.md")
 
+
 def _load_prompt() -> str:
     if PROMPT_PATH.exists():
         return PROMPT_PATH.read_text(encoding="utf-8")
@@ -52,6 +56,7 @@ def _load_prompt() -> str:
         "Не придумывай факты и даты. Если дедлайна нет — оставь пустым. "
         "Возвращай ТОЛЬКО JSON по схеме."
     )
+
 
 def _json_schema_block() -> str:
     # описание схемы для модели
@@ -71,14 +76,15 @@ def _json_schema_block() -> str:
                         "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
                         "flags": {"type": "array", "items": {"type": "string"}},
                         "context": {"type": ["string", "null"]},
-                        "reasoning": {"type": ["string", "null"]}
-                    }
-                }
+                        "reasoning": {"type": ["string", "null"]},
+                    },
+                },
             }
         },
-        "required": ["commits"]
+        "required": ["commits"],
     }
     return json.dumps(schema, ensure_ascii=False)
+
 
 def _build_user_message(text: str, attendees: list[str], meeting_date: str) -> str:
     return (
@@ -87,12 +93,15 @@ def _build_user_message(text: str, attendees: list[str], meeting_date: str) -> s
         f"Транскрипт:\n{text}"
     )
 
-def _build_messages(text: str, attendees: list[str], meeting_date: str) -> list[ChatCompletionMessageParam]:
+
+def _build_messages(
+    text: str, attendees: list[str], meeting_date: str
+) -> list[ChatCompletionMessageParam]:
     prompt = _load_prompt()
     # Заменяем плейсхолдеры в промпте
     prompt = prompt.replace("{ATTENDEES}", ", ".join(attendees) if attendees else "—")
     prompt = prompt.replace("{DATE}", meeting_date)
-    
+
     schema_json = _json_schema_block()
     system = (
         "Ты извлекаешь коммиты из деловых транскриптов. "
@@ -103,7 +112,7 @@ def _build_messages(text: str, attendees: list[str], meeting_date: str) -> list[
     instructions = (
         f"{prompt}\n\nТребования к выводу:\n"
         f"1) Только валидный JSON UTF-8 без пояснений и без Markdown-блоков.\n"
-        f"2) Структура: {{\"commits\": [ {{...}}, ... ] }}.\n"
+        f'2) Структура: {{"commits": [ {{...}}, ... ] }}.\n'
         f"3) JSON Schema: {schema_json}\n"
         f"4) Не придумывай даты/имена/ролей. Если неизвестно — пропусти поле или оставь null.\n"
         f"5) Для direction используй только 'mine' или 'theirs'.\n"
@@ -120,12 +129,14 @@ def _build_messages(text: str, attendees: list[str], meeting_date: str) -> list[
 
 _CLEAN_FENCE = re.compile(r"^```(?:json)?|```$", re.MULTILINE)
 
+
 def _extract_json(text: str) -> dict[str, Any]:
     if not text:
         raise ValueError("LLM вернул пустой ответ")
     # вырезаем возможные ```json ... ```
     cleaned = _CLEAN_FENCE.sub("", text).strip()
     return json.loads(cleaned)  # type: ignore
+
 
 def _to_models(payload: dict[str, Any]) -> list[ExtractedCommit]:
     items = payload.get("commits") or []
@@ -138,6 +149,7 @@ def _to_models(payload: dict[str, Any]) -> list[ExtractedCommit]:
             print(f"Skipping invalid commit: {it}, error: {e}")
             continue
     return out
+
 
 def _create_client() -> OpenAI:
     """Создает синхронный OpenAI клиент с таймаутами."""
@@ -152,13 +164,13 @@ def _create_client() -> OpenAI:
     )
 
     http = httpx.Client(
-        timeout=timeout, 
-        limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
+        timeout=timeout, limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
     )
     return OpenAI(api_key=settings.openai_api_key, http_client=http)
 
 
 # ==== Публичный интерфейс ====
+
 
 def extract_commits(
     text: str,
@@ -199,7 +211,7 @@ def extract_commits(
         data = _extract_json(raw)
         commits = _to_models(data)
         return commits
-    
+
     except Exception as e:
         print(f"Error in extract_commits: {type(e).__name__}: {e}")
         raise

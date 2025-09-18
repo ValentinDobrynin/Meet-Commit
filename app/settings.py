@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     summarize_model: str = "gpt-4o-mini"
     summarize_temperature: float = 0.2
-    
+
     # Notion settings
     notion_token: str | None = None
     notion_db_meetings_id: str | None = None
