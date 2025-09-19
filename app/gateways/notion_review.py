@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from app.core.constants import REVIEW_STATUS_PENDING
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -37,12 +38,12 @@ def _props_review(item: dict, meeting_page_id: str) -> dict[str, Any]:
         "Commit text": {"rich_text": [{"text": {"content": (item.get("text") or "")[:1800]}}]},
         "Direction": {"select": {"name": item.get("direction", "theirs")}},
         "Assignee": {"multi_select": [{"name": a} for a in (item.get("assignees") or [])]},
-        "Due": {"date": {"start": due} if due else None},
+        "Due": {"date": {"start": due}} if due else {"date": None},
         "Confidence": {"number": float(item.get("confidence", 0.0))},
         "Reason": {"multi_select": [{"name": r} for r in (item.get("reasons") or [])]},
         "Context": {"rich_text": [{"text": {"content": (item.get("context") or "")[:1800]}}]},
         "Meeting": {"relation": [{"id": meeting_page_id}]},
-        "Status": {"select": {"name": item.get("status", "pending")}},
+        "Status": {"select": {"name": item.get("status", REVIEW_STATUS_PENDING)}},
     }
 
 
@@ -107,5 +108,239 @@ def set_status(page_id: str, status: str) -> None:
     except Exception as e:
         print(f"Error in set_status: {type(e).__name__}: {e}")
         raise
+    finally:
+        client.close()
+
+
+# ====== НОВЫЕ МЕТОДЫ ДЛЯ УПРАВЛЕНИЯ REVIEW QUEUE ======
+
+
+def _short_id(page_id: str) -> str:
+    """Возвращает короткий ID (последние 6 символов)."""
+    return page_id.replace("-", "")[-6:]
+
+
+def _parse_rich_text(prop: dict | None) -> str:
+    """Парсит Notion rich_text property."""
+    if not prop or prop.get("type") != "rich_text":
+        return ""
+    parts = prop.get("rich_text", [])
+    return "".join(p.get("plain_text", "") for p in parts).strip()
+
+
+def _parse_select(prop: dict | None) -> str | None:
+    """Парсит Notion select property."""
+    if not prop or prop.get("type") != "select":
+        return None
+    sel = prop.get("select") or {}
+    return sel.get("name")
+
+
+def _parse_multi_select(prop: dict | None) -> list[str]:
+    """Парсит Notion multi_select property."""
+    if not prop or prop.get("type") != "multi_select":
+        return []
+    return [x.get("name", "") for x in prop.get("multi_select", []) if x.get("name")]
+
+
+def _parse_date(prop: dict | None) -> str | None:
+    """Парсит Notion date property."""
+    if not prop or prop.get("type") != "date":
+        return None
+    dt = prop.get("date") or {}
+    return dt.get("start")
+
+
+def _parse_number(prop: dict | None) -> float | None:
+    """Парсит Notion number property."""
+    if not prop or prop.get("type") != "number":
+        return None
+    return prop.get("number")
+
+
+def _parse_relation_id(prop: dict | None) -> str | None:
+    """Парсит Notion relation property и возвращает первый ID."""
+    if not prop or prop.get("type") != "relation":
+        return None
+    rel = prop.get("relation") or []
+    return rel[0]["id"] if rel else None
+
+
+def list_pending(limit: int = 5) -> list[dict]:
+    """
+    Возвращает список pending элементов из Review queue.
+
+    Args:
+        limit: Максимальное количество элементов
+
+    Returns:
+        Список словарей с данными элементов
+    """
+    client = _create_client()
+
+    try:
+        payload = {
+            "filter": {"property": "Status", "select": {"equals": REVIEW_STATUS_PENDING}},
+            "page_size": limit,
+            "sorts": [{"timestamp": "last_edited_time", "direction": "descending"}],
+        }
+        response = client.post(
+            f"{NOTION_API}/databases/{settings.review_db_id}/query",
+            json=payload,
+        )
+        response.raise_for_status()
+
+        results = []
+        for item in response.json().get("results", []):
+            page_id = item["id"]
+            props = item["properties"]
+
+            results.append(
+                {
+                    "page_id": page_id,
+                    "short_id": _short_id(page_id),
+                    "text": _parse_rich_text(props.get("Commit text")),
+                    "direction": _parse_select(props.get("Direction")),
+                    "assignees": _parse_multi_select(props.get("Assignee")),
+                    "due_iso": _parse_date(props.get("Due")),
+                    "confidence": _parse_number(props.get("Confidence")),
+                    "reasons": _parse_multi_select(props.get("Reason")),
+                    "context": _parse_rich_text(props.get("Context")),
+                    "meeting_page_id": _parse_relation_id(props.get("Meeting")),
+                }
+            )
+
+        # Fallback: если 0 записей, попробуем без фильтра (диагностика)
+        if not results:
+            logger.warning("No pending items found, trying fallback query without filter")
+            fallback_response = client.post(
+                f"{NOTION_API}/databases/{settings.review_db_id}/query",
+                json={
+                    "page_size": limit,
+                    "sorts": [{"timestamp": "last_edited_time", "direction": "descending"}],
+                },
+            )
+            fallback_response.raise_for_status()
+            fallback_data = fallback_response.json()
+
+            logger.info(f"Fallback query found {len(fallback_data.get('results', []))} total items")
+            for item in fallback_data.get("results", [])[:3]:
+                status = _parse_select(item["properties"].get("Status"))
+                logger.info(f"Item status: '{status}'")
+
+        return results
+
+    except Exception as e:
+        logger.error(f"Error in list_pending: {type(e).__name__}: {e}")
+        raise
+    finally:
+        client.close()
+
+
+def get_by_short_id(short_id: str) -> dict | None:
+    """
+    Находит элемент по короткому ID с поддержкой пагинации.
+
+    Args:
+        short_id: Короткий ID (последние 6 символов page_id)
+
+    Returns:
+        Словарь с данными элемента или None
+    """
+    short_id = short_id.lower()
+    client = _create_client()
+
+    try:
+        cursor: str | None = None
+        while True:
+            payload = {
+                "filter": {"property": "Status", "select": {"equals": REVIEW_STATUS_PENDING}},
+                "sorts": [{"timestamp": "last_edited_time", "direction": "descending"}],
+                "page_size": 50,
+            }
+            if cursor:
+                payload["start_cursor"] = cursor
+
+            response = client.post(
+                f"{NOTION_API}/databases/{settings.review_db_id}/query", json=payload
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Ищем в текущей странице
+            for item in data.get("results", []):
+                page_id = item["id"]
+                if _short_id(page_id).lower() == short_id:
+                    props = item["properties"]
+                    return {
+                        "page_id": page_id,
+                        "short_id": _short_id(page_id),
+                        "text": _parse_rich_text(props.get("Commit text")),
+                        "direction": _parse_select(props.get("Direction")),
+                        "assignees": _parse_multi_select(props.get("Assignee")),
+                        "due_iso": _parse_date(props.get("Due")),
+                        "confidence": _parse_number(props.get("Confidence")),
+                        "reasons": _parse_multi_select(props.get("Reason")),
+                        "context": _parse_rich_text(props.get("Context")),
+                        "meeting_page_id": _parse_relation_id(props.get("Meeting")),
+                    }
+
+            # Проверяем, есть ли еще страницы
+            if not data.get("has_more"):
+                break
+            cursor = data.get("next_cursor")
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Error in get_by_short_id: {type(e).__name__}: {e}")
+        raise
+    finally:
+        client.close()
+
+
+def update_fields(
+    page_id: str,
+    *,
+    direction: str | None = None,
+    assignees: list[str] | None = None,
+    due_iso: str | None = None,
+) -> bool:
+    """
+    Обновляет поля элемента в Review queue.
+
+    Args:
+        page_id: ID страницы в Notion
+        direction: Новое направление (mine/theirs)
+        assignees: Новый список исполнителей
+        due_iso: Новая дата дедлайна в ISO формате
+
+    Returns:
+        True если успешно обновлено
+    """
+    props: dict[str, Any] = {}
+
+    if direction:
+        props["Direction"] = {"select": {"name": direction}}
+
+    if assignees is not None:
+        props["Assignee"] = {"multi_select": [{"name": a} for a in assignees]}
+
+    if due_iso is not None:
+        props["Due"] = {"date": {"start": due_iso}} if due_iso else {"date": None}
+
+    if not props:
+        return True  # Нечего обновлять
+
+    client = _create_client()
+
+    try:
+        response = client.patch(f"{NOTION_API}/pages/{page_id}", json={"properties": props})
+        response.raise_for_status()
+        return True
+
+    except Exception as e:
+        logger.error(f"Error in update_fields: {type(e).__name__}: {e}")
+        return False
     finally:
         client.close()

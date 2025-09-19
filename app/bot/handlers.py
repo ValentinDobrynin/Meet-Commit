@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from pathlib import Path
 
 from aiogram import F, Router
@@ -11,8 +12,15 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from app.core.commit_normalize import normalize_commits, validate_date_iso
+from app.core.commit_normalize import (
+    build_key,
+    build_title,
+    normalize_assignees,
+    normalize_commits,
+    validate_date_iso,
+)
 from app.core.commit_validate import validate_and_partition
+from app.core.constants import REVIEW_STATUS_DROPPED, REVIEW_STATUS_RESOLVED
 from app.core.llm_extract_commits import extract_commits
 from app.core.llm_summarize import run as summarize_run
 from app.core.normalize import run as normalize_run
@@ -20,7 +28,13 @@ from app.core.people_store import canonicalize_list
 from app.core.tagger import run as tagger_run
 from app.gateways.notion_commits import upsert_commits
 from app.gateways.notion_gateway import upsert_meeting
-from app.gateways.notion_review import enqueue
+from app.gateways.notion_review import (
+    enqueue,
+    get_by_short_id,
+    list_pending,
+    set_status,
+    update_fields,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -417,3 +431,236 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
         await msg.answer(f"Не удалось обработать. Причина: {type(e).__name__}: {e}")
     finally:
         await state.clear()
+
+
+# ====== КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ REVIEW QUEUE ======
+
+
+def _clean_sid(s: str) -> str:
+    """Очищает short ID от лишних символов и возвращает последние 6 символов."""
+    return re.sub(r"[^0-9A-Za-z]", "", s)[-6:]
+
+
+@router.message(F.text.regexp(r"^/review(\s+\d+)?$"))
+async def cmd_review(msg: Message):
+    """Показывает список pending элементов в Review queue."""
+    try:
+        parts = (msg.text or "").strip().split()
+        limit = int(parts[1]) if len(parts) > 1 else 5
+
+        items = list_pending(limit=limit)
+
+        if not items:
+            await msg.answer("📋 Review queue пуста.")
+            return
+
+        lines = ["📋 Pending review:"]
+        for item in items:
+            assignees_str = ", ".join(item["assignees"]) if item["assignees"] else "—"
+            due_str = item["due_iso"] or "—"
+            conf_str = f"{item['confidence']:.2f}" if item["confidence"] is not None else "—"
+
+            text_preview = (item["text"] or "")[:90]
+            if len(item["text"] or "") > 90:
+                text_preview += "..."
+
+            lines.append(
+                f"[{item['short_id']}] {text_preview}\n"
+                f"    dir={item['direction'] or '?'} | who={assignees_str} | due={due_str} | conf={conf_str}"
+            )
+
+        await msg.answer("\n\n".join(lines))
+
+    except Exception as e:
+        logger.error(f"Error in cmd_review: {e}")
+        await msg.answer("❌ Ошибка при получении списка review.")
+
+
+@router.message(F.text.regexp(r"^/flip\s+\S+$", flags=re.I))
+async def cmd_flip(msg: Message):
+    """Переключает direction между mine и theirs."""
+    try:
+        short_id = _clean_sid((msg.text or "").strip().split()[1])
+        item = get_by_short_id(short_id)
+
+        if not item:
+            await msg.answer(f"❌ Карточка [{short_id}] не найдена. Проверьте /review.")
+            return
+
+        current_direction = item["direction"] or "theirs"
+        new_direction = "mine" if current_direction == "theirs" else "theirs"
+
+        try:
+            success = update_fields(item["page_id"], direction=new_direction)
+            if success:
+                await msg.answer(f"✅ [{short_id}] Direction → {new_direction}")
+            else:
+                await msg.answer(f"❌ Не удалось обновить direction для [{short_id}].")
+        except Exception as e:
+            logger.error(f"Error updating direction: {e}")
+            await msg.answer(f"❌ Ошибка обновления direction: {e}")
+
+    except Exception as e:
+        logger.error(f"Error in cmd_flip: {e}")
+        await msg.answer("❌ Ошибка при выполнении flip.")
+
+
+@router.message(F.text.regexp(r"^/assign\s+\S+\s+.+$", flags=re.I))
+async def cmd_assign(msg: Message):
+    """Назначает исполнителя на карточку."""
+    try:
+        parts = (msg.text or "").strip().split(maxsplit=2)
+        if len(parts) < 3:
+            await msg.answer("Синтаксис: /assign <id> <имя>")
+            return
+
+        short_id = _clean_sid(parts[1])
+        raw_names = parts[2]
+        item = get_by_short_id(short_id)
+
+        if not item:
+            await msg.answer(f"❌ Карточка [{short_id}] не найдена. Проверьте /review.")
+            return
+
+        # Разбираем имена (через пробел или запятую)
+        raw_list = [x.strip() for x in raw_names.replace(",", " ").split() if x.strip()]
+
+        # Нормализуем через словарь people.json
+        normalized_assignees = normalize_assignees(raw_list, attendees_en=[])
+
+        if not normalized_assignees:
+            await msg.answer(f"❌ Не удалось распознать исполнителя(ей): {raw_names}")
+            return
+
+        success = update_fields(item["page_id"], assignees=normalized_assignees)
+
+        if success:
+            assignees_str = ", ".join(normalized_assignees)
+            await msg.answer(f"✅ [{short_id}] Assignee → {assignees_str}")
+        else:
+            await msg.answer(f"❌ Не удалось обновить assignee для [{short_id}].")
+
+    except Exception as e:
+        logger.error(f"Error in cmd_assign: {e}")
+        await msg.answer("❌ Ошибка при выполнении assign.")
+
+
+@router.message(F.text.regexp(r"^/delete\s+\S+$", flags=re.I))
+async def cmd_delete(msg: Message):
+    """Помечает карточку как dropped."""
+    try:
+        short_id = _clean_sid((msg.text or "").strip().split()[1])
+        item = get_by_short_id(short_id)
+
+        if not item:
+            await msg.answer(f"❌ Карточка [{short_id}] не найдена. Проверьте /review.")
+            return
+
+        try:
+            set_status(item["page_id"], REVIEW_STATUS_DROPPED)
+            await msg.answer(f"✅ [{short_id}] Удалено (dropped).")
+        except Exception as e:
+            logger.error(f"Error setting status: {e}")
+            await msg.answer(f"❌ Ошибка удаления: {e}")
+
+    except Exception as e:
+        logger.error(f"Error in cmd_delete: {e}")
+        await msg.answer("❌ Ошибка при выполнении delete.")
+
+
+@router.message(F.text.regexp(r"^/confirm\s+\S+.*$", flags=re.I))
+async def cmd_confirm(msg: Message):
+    """Подтверждает карточку и создает коммит."""
+    try:
+        parts = (msg.text or "").strip().split()
+        if len(parts) < 2:
+            await msg.answer("❌ Синтаксис: /confirm <short_id>")
+            return
+        
+        if len(parts) > 2:
+            await msg.answer(f"❌ Команда /confirm принимает только ID карточки.\n"
+                           f"Синтаксис: /confirm <short_id>\n"
+                           f"Возможно, вы хотели: /assign {parts[1]} {' '.join(parts[2:])}")
+            return
+            
+        short_id = _clean_sid(parts[1])
+        item = get_by_short_id(short_id)
+
+        if not item:
+            await msg.answer(f"❌ Карточка [{short_id}] не найдена. Проверьте /review.")
+            return
+
+        # Собираем данные для коммита
+        text = item["text"] or ""
+        direction = item["direction"] or "theirs"
+        assignees = item["assignees"] or []
+        due_iso = item["due_iso"]
+
+        # Генерируем title и key
+        title = build_title(direction, text, assignees, due_iso)
+        key = build_key(text, assignees, due_iso)
+
+        # Создаем коммит
+        commit_item = {
+            "title": title,
+            "text": text,
+            "direction": direction,
+            "assignees": assignees,
+            "due_iso": due_iso,
+            "confidence": item["confidence"] or 0.6,
+            "flags": [],
+            "key": key,
+            "tags": [],  # TODO: можно добавить наследование тегов из Meeting
+            "status": "open",
+        }
+
+        # Сохраняем в Commits
+        meeting_page_id = item["meeting_page_id"]
+        if not meeting_page_id:
+            await msg.answer(f"❌ [{short_id}] Не найден meeting_page_id.")
+            return
+
+        result = upsert_commits(meeting_page_id, [commit_item])
+        created = len(result.get("created", []))
+        updated = len(result.get("updated", []))
+
+        if created or updated:
+            # Помечаем review как resolved
+            try:
+                set_status(item["page_id"], REVIEW_STATUS_RESOLVED)
+                await msg.answer(
+                    f"✅ [{short_id}] Confirmed! Создано: {created}, обновлено: {updated}."
+                )
+            except Exception as e:
+                logger.error(f"Error setting resolved status: {e}")
+                await msg.answer(
+                    f"✅ [{short_id}] Коммит создан, но не удалось обновить статус: {e}"
+                )
+        else:
+            await msg.answer(f"❌ [{short_id}] Не удалось создать коммит.")
+
+    except Exception as e:
+        logger.error(f"Error in cmd_confirm: {e}")
+        await msg.answer("❌ Ошибка при выполнении confirm.")
+
+
+@router.message(F.text.regexp(r"^/(review|flip|assign|delete|confirm)\b", flags=re.I))
+async def cmd_review_fallback(msg: Message):
+    """Fallback для неправильного синтаксиса команд review."""
+    text = (msg.text or "").strip()
+    
+    if text.startswith("/review"):
+        await msg.answer("❌ Неправильный синтаксис.\n"
+                        "Используйте: /review [количество]")
+    elif text.startswith("/flip"):
+        await msg.answer("❌ Неправильный синтаксис.\n"
+                        "Используйте: /flip <short_id>")
+    elif text.startswith("/assign"):
+        await msg.answer("❌ Неправильный синтаксис.\n"
+                        "Используйте: /assign <short_id> <имя>")
+    elif text.startswith("/delete"):
+        await msg.answer("❌ Неправильный синтаксис.\n"
+                        "Используйте: /delete <short_id>")
+    elif text.startswith("/confirm"):
+        await msg.answer("❌ Неправильный синтаксис.\n"
+                        "Используйте: /confirm <short_id>")
