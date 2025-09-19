@@ -250,9 +250,6 @@ async def run_commits_pipeline(
         )
         logger.info(f"Extracted {len(extracted_commits)} commits from LLM")
 
-        # DEBUG: Показываем что извлек LLM
-        if msg:
-            await msg.answer(f"[debug] extracted={len(extracted_commits)}")
 
         # 2) Нормализация (исполнители, дедлайны, title, key)
         normalized_commits = normalize_commits(
@@ -273,11 +270,6 @@ async def run_commits_pipeline(
             f"Partitioned commits: {len(partition_result.to_commits)} to store, {len(partition_result.to_review)} to review"
         )
 
-        # DEBUG: Показываем результат партиционирования
-        if msg:
-            await msg.answer(
-                f"[debug] to_commits={len(partition_result.to_commits)} to_review={len(partition_result.to_review)}"
-            )
 
         # 4) Сохранение качественных коммитов в Commits (в executor, т.к. синхронный)
         commits_result: dict[str, list[str]] = {"created": [], "updated": []}
