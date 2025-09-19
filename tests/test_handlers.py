@@ -45,7 +45,7 @@ class TestCommitsPipeline:
     @patch("app.bot.handlers.normalize_commits")
     @patch("app.bot.handlers.validate_and_partition")
     @patch("app.bot.handlers.upsert_commits")
-    @patch("app.bot.handlers.enqueue")
+    @patch("app.bot.handlers.enqueue_with_upsert")
     async def test_run_commits_pipeline_success(
         self,
         mock_enqueue,
@@ -59,13 +59,25 @@ class TestCommitsPipeline:
         mock_extract_commits.return_value = [Mock()]  # 1 извлеченный коммит
         mock_normalize_commits.return_value = [Mock()]  # 1 нормализованный коммит
 
+        # Создаем правильные мок словари для review (как в commit_validate.py)
+        review_dict = {
+            "text": "review_item",
+            "direction": "theirs",
+            "assignees": ["John"],
+            "due_iso": None,
+            "confidence": 0.5,
+            "flags": ["low_confidence"],
+            "context": "test context",
+            "status": "pending",
+        }
+
         mock_partition_result = Mock()
         mock_partition_result.to_commits = [Mock(), Mock()]  # 2 качественных коммита
-        mock_partition_result.to_review = [{"text": "review_item"}]  # 1 на ревью
+        mock_partition_result.to_review = [review_dict]  # 1 на ревью
         mock_validate_and_partition.return_value = mock_partition_result
 
         mock_upsert_commits.return_value = {"created": ["id1"], "updated": ["id2"]}
-        mock_enqueue.return_value = ["review_id1"]
+        mock_enqueue.return_value = {"created": 1, "updated": 0, "page_ids": ["review_id1"]}
 
         # Вызываем функцию
         result = await run_commits_pipeline(
@@ -77,7 +89,7 @@ class TestCommitsPipeline:
         )
 
         # Проверяем результат
-        assert result == {"created": 1, "updated": 1, "review": 1}
+        assert result == {"created": 1, "updated": 1, "review_created": 1, "review_updated": 0}
 
         # Проверяем вызовы функций
         mock_extract_commits.assert_called_once_with(
@@ -125,11 +137,7 @@ class TestCommitsPipeline:
         )
 
         # Проверяем результат
-        assert result == {"created": 1, "updated": 0, "review": 0}
-
-        # enqueue не должен вызываться
-        with patch("app.bot.handlers.enqueue") as mock_enqueue:
-            mock_enqueue.assert_not_called()
+        assert result == {"created": 1, "updated": 0, "review_created": 0, "review_updated": 0}
 
     @pytest.mark.asyncio
     @patch("app.bot.handlers.extract_commits")
@@ -148,13 +156,40 @@ class TestCommitsPipeline:
         mock_extract_commits.return_value = [Mock()]
         mock_normalize_commits.return_value = [Mock()]
 
+        # Создаем правильные мок словари для review (как в commit_validate.py)
+        review_dict1 = {
+            "text": "review1",
+            "direction": "theirs",
+            "assignees": [],
+            "due_iso": None,
+            "confidence": 0.4,
+            "flags": ["no_assignee"],
+            "context": "context1",
+            "status": "pending",
+        }
+
+        review_dict2 = {
+            "text": "review2",
+            "direction": "mine",
+            "assignees": ["Jane"],
+            "due_iso": "2024-12-31",
+            "confidence": 0.6,
+            "flags": [],
+            "context": "context2",
+            "status": "pending",
+        }
+
         mock_partition_result = Mock()
         mock_partition_result.to_commits = []  # нет качественных коммитов
-        mock_partition_result.to_review = [{"text": "review1"}, {"text": "review2"}]
+        mock_partition_result.to_review = [review_dict1, review_dict2]
         mock_validate_and_partition.return_value = mock_partition_result
 
-        with patch("app.bot.handlers.enqueue") as mock_enqueue:
-            mock_enqueue.return_value = ["review_id1", "review_id2"]
+        with patch("app.bot.handlers.enqueue_with_upsert") as mock_enqueue:
+            mock_enqueue.return_value = {
+                "created": 2,
+                "updated": 0,
+                "page_ids": ["review_id1", "review_id2"],
+            }
 
             # Вызываем функцию
             result = await run_commits_pipeline(
@@ -166,7 +201,7 @@ class TestCommitsPipeline:
             )
 
         # Проверяем результат
-        assert result == {"created": 0, "updated": 0, "review": 2}
+        assert result == {"created": 0, "updated": 0, "review_created": 2, "review_updated": 0}
 
         # upsert_commits не должен вызываться
         mock_upsert_commits.assert_not_called()
@@ -188,7 +223,7 @@ class TestCommitsPipeline:
         )
 
         # При ошибке должна возвращаться нулевая статистика
-        assert result == {"created": 0, "updated": 0, "review": 0}
+        assert result == {"created": 0, "updated": 0, "review_created": 0, "review_updated": 0}
 
     @pytest.mark.asyncio
     @patch("app.bot.handlers.extract_commits")
@@ -225,7 +260,7 @@ class TestCommitsPipeline:
         )
 
         # При ошибке должна возвращаться нулевая статистика
-        assert result == {"created": 0, "updated": 0, "review": 0}
+        assert result == {"created": 0, "updated": 0, "review_created": 0, "review_updated": 0}
 
     @pytest.mark.asyncio
     @patch("app.bot.handlers.extract_commits")
@@ -254,7 +289,7 @@ class TestCommitsPipeline:
         )
 
         # Результат должен быть нулевым
-        assert result == {"created": 0, "updated": 0, "review": 0}
+        assert result == {"created": 0, "updated": 0, "review_created": 0, "review_updated": 0}
 
         # Все функции должны быть вызваны, но с пустыми данными
         mock_extract_commits.assert_called_once()
@@ -268,7 +303,7 @@ class TestCommitsPipeline:
     @patch("app.bot.handlers.normalize_commits")
     @patch("app.bot.handlers.validate_and_partition")
     @patch("app.bot.handlers.upsert_commits")
-    @patch("app.bot.handlers.enqueue")
+    @patch("app.bot.handlers.enqueue_with_upsert")
     async def test_run_commits_pipeline_with_tags(
         self,
         mock_enqueue,
@@ -303,7 +338,7 @@ class TestCommitsPipeline:
         )
 
         # Проверяем результат
-        assert result == {"created": 1, "updated": 0, "review": 0}
+        assert result == {"created": 1, "updated": 0, "review_created": 0, "review_updated": 0}
 
         # Проверяем, что validate_and_partition вызван с правильными тегами
         call_args = mock_validate_and_partition.call_args

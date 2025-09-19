@@ -5,6 +5,7 @@ import asyncio
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -29,7 +30,7 @@ from app.core.tagger import run as tagger_run
 from app.gateways.notion_commits import upsert_commits
 from app.gateways.notion_gateway import upsert_meeting
 from app.gateways.notion_review import (
-    enqueue,
+    enqueue_with_upsert,
     get_by_short_id,
     list_pending,
     set_status,
@@ -250,7 +251,6 @@ async def run_commits_pipeline(
         )
         logger.info(f"Extracted {len(extracted_commits)} commits from LLM")
 
-
         # 2) Нормализация (исполнители, дедлайны, title, key)
         normalized_commits = normalize_commits(
             extracted_commits,
@@ -270,7 +270,6 @@ async def run_commits_pipeline(
             f"Partitioned commits: {len(partition_result.to_commits)} to store, {len(partition_result.to_review)} to review"
         )
 
-
         # 4) Сохранение качественных коммитов в Commits (в executor, т.к. синхронный)
         commits_result: dict[str, list[str]] = {"created": [], "updated": []}
         if partition_result.to_commits:
@@ -279,13 +278,42 @@ async def run_commits_pipeline(
                 None, lambda: upsert_commits(meeting_page_id, commits_dict)
             )
 
-        # 5) Отправка проблемных коммитов в Review Queue (в executor, т.к. синхронный)
-        review_ids: list[str] = []
+        # 5) Сохранение сомнительных коммитов в Review Queue с дедупликацией (в executor, т.к. синхронный)
+        review_stats = {"created": 0, "updated": 0}
+
         if partition_result.to_review:
             try:
-                review_ids = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: enqueue(partition_result.to_review, meeting_page_id)
+                # to_review уже содержит словари, только добавляем недостающие поля
+                review_items: list[dict[str, Any]] = []
+                for review_dict in partition_result.to_review:
+                    # review_dict уже является словарем из commit_validate.py
+                    # Добавляем недостающие поля для Review Queue
+                    review_item = review_dict.copy()  # Копируем исходный словарь
+
+                    # Добавляем reason из флагов если есть
+                    if "reason" not in review_item:
+                        review_item["reason"] = (
+                            ", ".join(review_dict.get("flags", [])) or "Low confidence"
+                        )
+
+                    # Восстанавливаем генерацию key для дедупликации
+                    if "key" not in review_item:
+                        review_item["key"] = build_key(
+                            review_dict.get("text", ""),
+                            review_dict.get("assignees", []),
+                            review_dict.get("due_iso"),
+                        )
+
+                    # Добавляем теги встречи
+                    review_item["tags"] = review_dict.get("tags", []) + meeting_tags
+
+                    review_items.append(review_item)
+
+                # Используем upsert с дедупликацией по ключу
+                review_stats = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: enqueue_with_upsert(review_items, meeting_page_id)
                 )
+
             except Exception as e:
                 logger.error(f"Error enqueueing review items: {e}")
                 # Продолжаем работу даже если Review Queue не работает
@@ -293,7 +321,8 @@ async def run_commits_pipeline(
         stats = {
             "created": len(commits_result.get("created", [])),
             "updated": len(commits_result.get("updated", [])),
-            "review": len(review_ids),
+            "review_created": review_stats.get("created", 0),
+            "review_updated": review_stats.get("updated", 0),
         }
 
         logger.info(f"Commits pipeline completed: {stats}")
@@ -302,7 +331,7 @@ async def run_commits_pipeline(
     except Exception as e:
         logger.exception(f"Error in commits pipeline for meeting {meeting_page_id}: {e}")
         # Возвращаем нулевую статистику при ошибке
-        return {"created": 0, "updated": 0, "review": 0}
+        return {"created": 0, "updated": 0, "review_created": 0, "review_updated": 0}
 
 
 async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
@@ -389,13 +418,22 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
             )
 
             # Формируем отчет по коммитам
+            # Подсчитываем общее количество элементов в ревью
+            total_review = stats.get("review_created", 0) + stats.get("review_updated", 0)
+
             commits_report = (
                 f"📊 <b>Коммиты обработаны:</b>\n"
                 f"• ✅ Сохранено: {stats['created'] + stats['updated']}\n"
                 f"• 🆕 Создано: {stats['created']}\n"
                 f"• 🔄 Обновлено: {stats['updated']}\n"
-                f"• 🔍 На ревью: {stats['review']}"
+                f"• 🔍 На ревью: {total_review}"
             )
+
+            # Добавляем детали по ревью если есть активность
+            if total_review > 0:
+                commits_report += (
+                    f" (🆕{stats.get('review_created', 0)} 🔄{stats.get('review_updated', 0)})"
+                )
 
         except Exception as e:
             logger.exception(f"Error in commits pipeline: {e}")
@@ -568,13 +606,15 @@ async def cmd_confirm(msg: Message):
         if len(parts) < 2:
             await msg.answer("❌ Синтаксис: /confirm <short_id>")
             return
-        
+
         if len(parts) > 2:
-            await msg.answer(f"❌ Команда /confirm принимает только ID карточки.\n"
-                           f"Синтаксис: /confirm <short_id>\n"
-                           f"Возможно, вы хотели: /assign {parts[1]} {' '.join(parts[2:])}")
+            await msg.answer(
+                f"❌ Команда /confirm принимает только ID карточки.\n"
+                f"Синтаксис: /confirm <short_id>\n"
+                f"Возможно, вы хотели: /assign {parts[1]} {' '.join(parts[2:])}"
+            )
             return
-            
+
         short_id = _clean_sid(parts[1])
         item = get_by_short_id(short_id)
 
@@ -640,19 +680,14 @@ async def cmd_confirm(msg: Message):
 async def cmd_review_fallback(msg: Message):
     """Fallback для неправильного синтаксиса команд review."""
     text = (msg.text or "").strip()
-    
+
     if text.startswith("/review"):
-        await msg.answer("❌ Неправильный синтаксис.\n"
-                        "Используйте: /review [количество]")
+        await msg.answer("❌ Неправильный синтаксис.\n" "Используйте: /review [количество]")
     elif text.startswith("/flip"):
-        await msg.answer("❌ Неправильный синтаксис.\n"
-                        "Используйте: /flip <short_id>")
+        await msg.answer("❌ Неправильный синтаксис.\n" "Используйте: /flip <short_id>")
     elif text.startswith("/assign"):
-        await msg.answer("❌ Неправильный синтаксис.\n"
-                        "Используйте: /assign <short_id> <имя>")
+        await msg.answer("❌ Неправильный синтаксис.\n" "Используйте: /assign <short_id> <имя>")
     elif text.startswith("/delete"):
-        await msg.answer("❌ Неправильный синтаксис.\n"
-                        "Используйте: /delete <short_id>")
+        await msg.answer("❌ Неправильный синтаксис.\n" "Используйте: /delete <short_id>")
     elif text.startswith("/confirm"):
-        await msg.answer("❌ Неправильный синтаксис.\n"
-                        "Используйте: /confirm <short_id>")
+        await msg.answer("❌ Неправильный синтаксис.\n" "Используйте: /confirm <short_id>")

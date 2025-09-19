@@ -12,9 +12,12 @@ from app.gateways.notion_review import (
     _parse_rich_text,
     _parse_select,
     _short_id,
+    enqueue_with_upsert,
+    find_pending_by_key,
     get_by_short_id,
     list_pending,
     update_fields,
+    upsert_review,
 )
 
 
@@ -348,3 +351,141 @@ class TestNotionReviewMethods:
 
         # Проверки
         assert result is False
+
+
+class TestUpsertReviewFunctions:
+    """Тесты для новых функций upsert в Review Queue."""
+
+    @patch("app.gateways.notion_review._create_client")
+    def test_find_pending_by_key_found(self, mock_create_client):
+        """Тест поиска pending элемента по ключу - элемент найден."""
+        mock_client = MagicMock()
+        mock_create_client.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "results": [
+                {
+                    "id": "test-page-id-123",
+                    "properties": {
+                        "Name": {"title": [{"text": {"content": "Test item"}}]},
+                        "Key": {"rich_text": [{"text": {"content": "test-key-123"}}]},
+                    },
+                }
+            ]
+        }
+        mock_client.post.return_value = mock_response
+
+        result = find_pending_by_key("test-key-123")
+
+        assert result is not None
+        assert result["page_id"] == "test-page-id-123"
+        assert "properties" in result
+        mock_client.post.assert_called_once()
+
+    @patch("app.gateways.notion_review._create_client")
+    def test_find_pending_by_key_not_found(self, mock_create_client):
+        """Тест поиска pending элемента по ключу - элемент не найден."""
+        mock_client = MagicMock()
+        mock_create_client.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"results": []}
+        mock_client.post.return_value = mock_response
+
+        result = find_pending_by_key("non-existent-key")
+
+        assert result is None
+        mock_client.post.assert_called_once()
+
+    @patch("app.gateways.notion_review.find_pending_by_key")
+    @patch("app.gateways.notion_review._create_client")
+    def test_upsert_review_create_new(self, mock_create_client, mock_find_pending):
+        """Тест создания нового элемента в Review Queue."""
+        mock_client = MagicMock()
+        mock_create_client.return_value = mock_client
+        mock_find_pending.return_value = None  # Элемент не найден
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"id": "new-page-id-456"}
+        mock_client.post.return_value = mock_response
+
+        test_item = {
+            "text": "Test commit text",
+            "direction": "theirs",
+            "assignees": ["John Doe"],
+            "due_iso": "2025-01-15",
+            "confidence": 0.75,
+            "reason": "Test reason",
+            "context": "Test context",
+            "key": "test-key-456",
+            "tags": ["urgent"],
+        }
+
+        result = upsert_review(test_item, "meeting-page-id")
+
+        assert result["created"] == 1
+        assert result["updated"] == 0
+        assert result["page_id"] == "new-page-id-456"
+        mock_client.post.assert_called_once()
+
+    @patch("app.gateways.notion_review.find_pending_by_key")
+    @patch("app.gateways.notion_review._create_client")
+    def test_upsert_review_update_existing(self, mock_create_client, mock_find_pending):
+        """Тест обновления существующего элемента в Review Queue."""
+        mock_client = MagicMock()
+        mock_create_client.return_value = mock_client
+        mock_find_pending.return_value = {"page_id": "existing-page-id", "properties": {}}
+
+        mock_response = MagicMock()
+        mock_client.patch.return_value = mock_response
+
+        test_item = {
+            "text": "Updated commit text",
+            "direction": "mine",
+            "assignees": ["Jane Smith"],
+            "due_iso": "2025-02-01",
+            "confidence": 0.85,
+            "reason": "Updated reason",
+            "context": "Updated context",
+            "key": "existing-key-789",
+            "tags": ["high-priority"],
+        }
+
+        result = upsert_review(test_item, "meeting-page-id")
+
+        assert result["created"] == 0
+        assert result["updated"] == 1
+        assert result["page_id"] == "existing-page-id"
+        mock_client.patch.assert_called_once()
+
+    @patch("app.gateways.notion_review.upsert_review")
+    def test_enqueue_with_upsert_multiple_items(self, mock_upsert_review):
+        """Тест добавления нескольких элементов через enqueue_with_upsert."""
+        # Настраиваем mock для возврата разных результатов
+        mock_upsert_review.side_effect = [
+            {"created": 1, "updated": 0, "page_id": "page-1"},
+            {"created": 0, "updated": 1, "page_id": "page-2"},
+            {"created": 1, "updated": 0, "page_id": "page-3"},
+        ]
+
+        test_items = [
+            {"key": "key-1", "text": "Item 1"},
+            {"key": "key-2", "text": "Item 2"},
+            {"key": "key-3", "text": "Item 3"},
+        ]
+
+        result = enqueue_with_upsert(test_items, "meeting-id")
+
+        assert result["created"] == 2
+        assert result["updated"] == 1
+        assert len(result["page_ids"]) == 3
+        assert mock_upsert_review.call_count == 3
+
+    def test_enqueue_with_upsert_empty_list(self):
+        """Тест enqueue_with_upsert с пустым списком."""
+        result = enqueue_with_upsert([], "meeting-id")
+
+        assert result["created"] == 0
+        assert result["updated"] == 0
+        assert result["page_ids"] == []

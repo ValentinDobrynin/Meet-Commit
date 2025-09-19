@@ -118,9 +118,9 @@ class TestReviewCommands:
     async def test_cmd_confirm_wrong_syntax_too_many_args(self, mock_message):
         """Тест команды /confirm с лишними аргументами."""
         mock_message.text = "/confirm 123456 Daniil"
-        
+
         await cmd_confirm(mock_message)
-        
+
         expected_msg = (
             "❌ Команда /confirm принимает только ID карточки.\n"
             "Синтаксис: /confirm <short_id>\n"
@@ -132,18 +132,18 @@ class TestReviewCommands:
     async def test_cmd_confirm_wrong_syntax_no_args(self, mock_message):
         """Тест команды /confirm без аргументов."""
         mock_message.text = "/confirm"
-        
+
         await cmd_confirm(mock_message)
-        
+
         mock_message.answer.assert_called_once_with("❌ Синтаксис: /confirm <short_id>")
 
     @pytest.mark.asyncio
     async def test_cmd_review_fallback_review(self, mock_message):
         """Тест fallback для неправильной команды /review."""
         mock_message.text = "/review abc def"
-        
+
         await cmd_review_fallback(mock_message)
-        
+
         mock_message.answer.assert_called_once_with(
             "❌ Неправильный синтаксис.\nИспользуйте: /review [количество]"
         )
@@ -152,9 +152,9 @@ class TestReviewCommands:
     async def test_cmd_review_fallback_confirm(self, mock_message):
         """Тест fallback для неправильной команды /confirm."""
         mock_message.text = "/confirm"
-        
+
         await cmd_review_fallback(mock_message)
-        
+
         mock_message.answer.assert_called_once_with(
             "❌ Неправильный синтаксис.\nИспользуйте: /confirm <short_id>"
         )

@@ -32,6 +32,9 @@ def _props_review(item: dict, meeting_page_id: str) -> dict[str, Any]:
     """Создает properties для страницы Review Queue."""
     due = item.get("due_iso")
     short = (item.get("text") or "")[:80]
+    # Восстанавливаем поля согласно патчу
+    reason = (item.get("reason") or "")[:1000]
+    key = (item.get("key") or "")[:128]
 
     return {
         "Name": {"title": [{"text": {"content": short}}]},
@@ -40,16 +43,147 @@ def _props_review(item: dict, meeting_page_id: str) -> dict[str, Any]:
         "Assignee": {"multi_select": [{"name": a} for a in (item.get("assignees") or [])]},
         "Due": {"date": {"start": due}} if due else {"date": None},
         "Confidence": {"number": float(item.get("confidence", 0.0))},
-        "Reason": {"multi_select": [{"name": r} for r in (item.get("reasons") or [])]},
+        "Reason": {
+            "rich_text": [{"text": {"content": reason}}]
+        },  # Восстанавливаем rich_text как в патче
         "Context": {"rich_text": [{"text": {"content": (item.get("context") or "")[:1800]}}]},
+        "Key": {"rich_text": [{"text": {"content": key}}]},  # Добавляем поле Key
         "Meeting": {"relation": [{"id": meeting_page_id}]},
         "Status": {"select": {"name": item.get("status", REVIEW_STATUS_PENDING)}},
     }
 
 
+def find_pending_by_key(key: str) -> dict | None:
+    """
+    Ищет pending элемент в Review Queue по ключу.
+
+    Args:
+        key: Ключ для поиска
+
+    Returns:
+        Словарь с page_id и properties если найден, иначе None
+    """
+    if not key:
+        return None
+
+    body = {
+        "filter": {
+            "and": [
+                {"property": "Key", "rich_text": {"equals": key}},
+                {"property": "Status", "select": {"equals": REVIEW_STATUS_PENDING}},
+            ]
+        },
+        "page_size": 1,
+    }
+
+    client = _create_client()
+    try:
+        response = client.post(f"{NOTION_API}/databases/{settings.review_db_id}/query", json=body)
+        response.raise_for_status()
+        results = response.json().get("results", [])
+
+        if not results:
+            return None
+
+        item = results[0]
+        return {"page_id": item["id"], "properties": item["properties"]}
+
+    except Exception as e:
+        logger.error(f"Error in find_pending_by_key: {e}")
+        raise
+    finally:
+        client.close()
+
+
+def upsert_review(item: dict, meeting_page_id: str) -> dict:
+    """
+    Создает или обновляет элемент в Review Queue с дедупликацией по ключу.
+
+    Args:
+        item: Данные элемента для review
+        meeting_page_id: ID страницы встречи
+
+    Returns:
+        Словарь со статистикой: {"created": int, "updated": int, "page_id": str}
+    """
+    key = item.get("key") or ""
+    existing = find_pending_by_key(key)
+
+    client = _create_client()
+    try:
+        if existing:
+            # Обновляем существующий элемент
+            page_id = existing["page_id"]
+            props = _props_review(item, meeting_page_id)
+            # При обновлении оставляем статус pending
+            props["Status"] = {"select": {"name": REVIEW_STATUS_PENDING}}
+
+            response = client.patch(f"{NOTION_API}/pages/{page_id}", json={"properties": props})
+            if response.status_code != 200:
+                logger.error(f"Review Update API Error {response.status_code}: {response.text}")
+                logger.error(f"Update Payload: {{'properties': {props}}}")
+            response.raise_for_status()
+
+            return {"created": 0, "updated": 1, "page_id": page_id}
+        else:
+            # Создаем новый элемент
+            payload = {
+                "parent": {"database_id": settings.review_db_id},
+                "properties": _props_review(item, meeting_page_id),
+            }
+
+            response = client.post(f"{NOTION_API}/pages", json=payload)
+            if response.status_code != 200:
+                logger.error(f"Review Create API Error {response.status_code}: {response.text}")
+                logger.error(f"Create Payload: {payload}")
+            response.raise_for_status()
+
+            page_id = response.json()["id"]
+            return {"created": 1, "updated": 0, "page_id": page_id}
+
+    except Exception as e:
+        logger.error(f"Error in upsert_review: {e}")
+        raise
+    finally:
+        client.close()
+
+
+def enqueue_with_upsert(items: list[dict], meeting_page_id: str) -> dict:
+    """
+    Добавляет элементы в очередь на ревью с дедупликацией по ключу.
+
+    Args:
+        items: Список элементов для ревью
+        meeting_page_id: ID страницы встречи в Notion
+
+    Returns:
+        Словарь со статистикой: {"created": int, "updated": int, "page_ids": list[str]}
+    """
+    if not items:
+        return {"created": 0, "updated": 0, "page_ids": []}
+
+    stats: dict[str, int | list[str]] = {"created": 0, "updated": 0, "page_ids": []}
+
+    for item in items:
+        try:
+            result = upsert_review(item, meeting_page_id)
+            stats["created"] += result.get("created", 0)
+            stats["updated"] += result.get("updated", 0)
+            page_ids = stats["page_ids"]
+            assert isinstance(page_ids, list)
+            page_ids.append(result.get("page_id", ""))
+        except Exception as e:
+            logger.error(f"Error upserting review item: {e}")
+            # Продолжаем обработку остальных элементов
+            continue
+
+    return stats
+
+
 def enqueue(items: list[dict], meeting_page_id: str) -> list[str]:
     """
-    Добавляет элементы в очередь на ревью.
+    Добавляет элементы в очередь на ревью (старая версия без дедупликации).
+    DEPRECATED: Используйте enqueue_with_upsert() для новой логики с дедупликацией.
 
     Args:
         items: Список элементов для ревью
