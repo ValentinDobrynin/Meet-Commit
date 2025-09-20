@@ -9,6 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
 from .handlers import router
+from .handlers_inline import router as inline_router
 from .init import build_bot
 
 # Загружаем переменные окружения из .env файла ПЕРЕД импортами
@@ -22,6 +23,7 @@ except KeyError:
 
 bot, dp = build_bot(TELEGRAM_TOKEN, MemoryStorage())
 dp.include_router(router)
+dp.include_router(inline_router)
 
 
 def acquire_lock():
@@ -65,6 +67,12 @@ async def run() -> None:
     """Запуск Telegram бота"""
     try:
         print("🤖 Starting bot in polling mode...")
+
+        # Отправляем приветствия активным пользователям при запуске
+        from app.bot.startup_greeting import send_startup_greetings_safe
+
+        await send_startup_greetings_safe(bot)
+
         await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
     except Exception as e:
         print(f"❌ Bot error: {e}")

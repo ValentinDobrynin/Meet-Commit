@@ -45,6 +45,16 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 MAX_PREVIEW_LINES = 12
 
 
+async def _send_empty_queue_message_with_menu(msg: Message) -> None:
+    """Отправляет сообщение о пустой очереди с главным меню."""
+    from app.bot.handlers_inline import build_main_menu_kb
+
+    await msg.answer(
+        "📋 Review queue пуста.\n\n" "💡 <i>Готов обработать новую встречу!</i>",
+        reply_markup=build_main_menu_kb(),
+    )
+
+
 class IngestStates(StatesGroup):
     waiting_prompt = State()
     waiting_extra = State()
@@ -72,7 +82,33 @@ def _skip_kb() -> InlineKeyboardMarkup:
 @router.message(F.text == "/start")
 async def cmd_start(msg: Message, state: FSMContext):
     await state.clear()
-    await msg.answer("Пришли файл или текст транскрипта. Затем выбери шаблон суммаризации.")
+
+    # Сохраняем пользователя в список активных
+    from app.bot.user_storage import add_user
+
+    chat_id = msg.chat.id
+    username = msg.from_user.username if msg.from_user else None
+    first_name = msg.from_user.first_name if msg.from_user else None
+
+    is_new_user = add_user(chat_id, username, first_name)
+    if is_new_user:
+        logger.info(f"New user registered: {chat_id} (@{username})")
+
+    await msg.answer(
+        "🤖 <b>Добро пожаловать в Meet-Commit!</b>\n\n"
+        "📋 <b>Я помогу вам:</b>\n"
+        "• 📝 Суммаризировать встречи через AI\n"
+        "• 🎯 Извлечь обязательства и действия\n"
+        "• 📊 Сохранить все в Notion с умной организацией\n"
+        "• 🔍 Управлять очередью задач на проверку\n\n"
+        "📎 <b>Отправьте файл встречи для начала работы</b>\n\n"
+        "🎯 <b>Поддерживаемые форматы:</b>\n"
+        "• 📄 Текстовые файлы (.txt)\n"
+        "• 📋 PDF документы (.pdf)\n"
+        "• 📝 Word документы (.docx)\n"
+        "• 📺 Субтитры (.vtt, .webvtt)\n\n"
+        "💡 <i>Просто перетащите файл в чат или используйте кнопку прикрепления</i>"
+    )
 
 
 @router.message(F.text == "/cancel")
@@ -457,6 +493,11 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
         for part in chunks:
             await msg.answer(part)
 
+        # Добавляем главное меню с кнопками
+        from app.bot.handlers_inline import build_main_menu_kb
+
+        await msg.answer("🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb())
+
     except Exception as e:
         await msg.answer(f"Не удалось обработать. Причина: {type(e).__name__}: {e}")
     finally:
@@ -481,7 +522,7 @@ async def cmd_review(msg: Message):
         items = list_pending(limit=limit)
 
         if not items:
-            await msg.answer("📋 Review queue пуста.")
+            await _send_empty_queue_message_with_menu(msg)
             return
 
         lines = ["📋 Pending review:"]

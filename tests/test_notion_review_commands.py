@@ -71,7 +71,12 @@ class TestReviewCommands:
 
         await cmd_review(mock_message)
 
-        mock_message.answer.assert_called_once_with("📋 Review queue пуста.")
+        # Проверяем, что вызывается новая функция с улучшенным сообщением и кнопками
+        mock_message.answer.assert_called_once()
+        call_args = mock_message.answer.call_args
+        assert "📋 Review queue пуста." in call_args[0][0]
+        assert "💡" in call_args[0][0]  # Проверяем наличие улучшенного текста
+        assert call_args[1]["reply_markup"] is not None  # Проверяем наличие клавиатуры
 
     @patch("app.bot.handlers.list_pending")
     @pytest.mark.asyncio
