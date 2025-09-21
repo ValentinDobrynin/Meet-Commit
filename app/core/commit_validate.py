@@ -7,6 +7,7 @@ from datetime import date
 from typing import Literal
 
 from app.core.commit_normalize import NormalizedCommit
+from app.core.tags import merge_meeting_and_commit_tags
 
 Level = Literal["HIGH", "MEDIUM", "LOW", "UNCLEAR"]
 
@@ -310,9 +311,7 @@ def validate_and_partition(
 
     # Добавляем теги встречи к коммитам высокого качества
     for commit in result.to_commits:
-        # Объединяем теги встречи с существующими тегами коммита
-        all_tags = set(meeting_tags)
-        all_tags.update(commit.tags)
-        commit.tags = sorted(all_tags)
+        # Объединяем теги встречи с собственными тегами коммита
+        commit.tags = merge_meeting_and_commit_tags(meeting_tags, commit.tags)
 
     return result

@@ -9,6 +9,7 @@ from hashlib import sha256
 
 from app.core.llm_extract_commits import ExtractedCommit
 from app.core.people_store import load_people
+from app.core.tags import tag_text_for_commit
 
 # ====== Парсинг due ======
 
@@ -428,6 +429,9 @@ def normalize_commits(
         title = build_title(commit.direction, commit.text, normalized_assignees, due)
         key = build_key(commit.text, normalized_assignees, due)
 
+        # Извлекаем теги из текста коммита с использованием унифицированной системы
+        commit_tags = tag_text_for_commit(commit.text + " " + (commit.context or ""))
+
         result.append(
             NormalizedCommit(
                 text=commit.text,
@@ -440,7 +444,7 @@ def normalize_commits(
                 reasoning=commit.reasoning,
                 title=title,
                 key=key,
-                tags=[],  # будет заполнено на уровне выше при upsert
+                tags=commit_tags,  # собственные теги коммита (будут объединены с тегами встречи позже)
             )
         )
 

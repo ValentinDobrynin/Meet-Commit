@@ -26,7 +26,7 @@ from app.core.llm_extract_commits import extract_commits
 from app.core.llm_summarize import run as summarize_run
 from app.core.normalize import run as normalize_run
 from app.core.people_store import canonicalize_list
-from app.core.tagger import run as tagger_run
+from app.core.tags import tag_text_for_meeting
 from app.gateways.notion_commits import upsert_commits
 from app.gateways.notion_gateway import upsert_meeting
 from app.gateways.notion_review import (
@@ -396,8 +396,9 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
         prompt_path = (PROMPTS_DIR / prompt_file).as_posix()
         summary_md = await summarize_run(text=meta["text"], prompt_path=prompt_path, extra=extra)
 
-        # 3) tagger v0
-        tags = tagger_run(summary_md=summary_md, meta=meta)
+        # 3) унифицированное тегирование (v0/v1/both в зависимости от настроек)
+        tags = tag_text_for_meeting(summary_md, meta)
+        logger.info(f"Meeting tagged with {len(tags)} canonical tags using unified system")
 
         # Уведомляем о сохранении в Notion
         await msg.answer("💾 <b>Сохраняю в Notion...</b>\n\n📝 Создаю страницу в базе данных...")

@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     commits_db_id: str | None = Field(default=None, alias="COMMITS_DB_ID")
     review_db_id: str | None = Field(default=None, alias="REVIEW_DB_ID")
 
+    # Unified tagging settings
+    tags_mode: str = "both"  # v0 | v1 | both
+
+    # Tagger v1 settings (kept for compatibility)
+    tagger_v1_enabled: bool = True
+    tagger_v1_rules_file: str = "data/tag_rules.yaml"
+
     model_config = SettingsConfigDict(
         env_prefix="APP_",
         env_file=os.getenv("ENV_FILE", ".env"),
