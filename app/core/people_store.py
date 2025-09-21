@@ -180,3 +180,109 @@ def get_candidate_stats() -> dict[str, int | float]:
         "min_count": min(counts),
         "avg_count": sum(counts) / len(counts),
     }
+
+
+# === People Miner утилиты ===
+
+
+def load_people_raw() -> list[dict]:
+    """Загружает основной словарь людей как список dict."""
+    if not PEOPLE.exists():
+        return []
+    try:
+        data = json.loads(PEOPLE.read_text(encoding="utf-8") or "[]")
+        # Поддерживаем как старый формат {"people": [...]}, так и новый [...]
+        if isinstance(data, dict) and "people" in data:
+            return data["people"] if isinstance(data["people"], list) else []
+        elif isinstance(data, list):
+            return data
+        else:
+            return []
+    except (json.JSONDecodeError, OSError) as e:
+        logger.error(f"Error loading people.json: {e}")
+        return []
+
+
+def save_people_raw(items: list[dict]) -> None:
+    """Сохраняет основной словарь людей в новом формате (прямой массив)."""
+    try:
+        # Сохраняем в новом формате как прямой массив
+        PEOPLE.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+        logger.info(f"Saved {len(items)} people to {PEOPLE}")
+    except OSError as e:
+        logger.error(f"Error saving people.json: {e}")
+        raise
+
+
+def load_candidates_raw() -> list[dict]:
+    """Загружает словарь кандидатов как список dict."""
+    if not CAND.exists():
+        return []
+    try:
+        data = json.loads(CAND.read_text(encoding="utf-8") or "[]")
+        return data if isinstance(data, list) else []
+    except (json.JSONDecodeError, OSError) as e:
+        logger.error(f"Error loading people_candidates.json: {e}")
+        return []
+
+
+def save_candidates_raw(items: list[dict]) -> None:
+    """Сохраняет словарь кандидатов."""
+    try:
+        CAND.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+        logger.info(f"Saved {len(items)} candidates to {CAND}")
+    except OSError as e:
+        logger.error(f"Error saving people_candidates.json: {e}")
+        raise
+
+
+def delete_candidate_by_id(cid: str) -> bool:
+    """Удаляет кандидата по ID. Возвращает True если удален."""
+    items = load_candidates_raw()
+    original_count = len(items)
+    items = [x for x in items if x.get("id") != cid]
+
+    if len(items) < original_count:
+        save_candidates_raw(items)
+        logger.info(f"Deleted candidate with id {cid}")
+        return True
+    return False
+
+
+def get_candidate_by_id(cid: str) -> dict | None:
+    """Получает кандидата по ID."""
+    items = load_candidates_raw()
+    return next((x for x in items if x.get("id") == cid), None)
+
+
+def upsert_candidate(alias: str, context: str = "", freq: int = 1, source: str = "miner") -> None:
+    """Добавляет или обновляет кандидата."""
+    import hashlib
+
+    # Создаем ID из alias (не для безопасности, только для идентификации)
+    cid = hashlib.sha1(alias.strip().lower().encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
+
+    items = load_candidates_raw()
+    found = next((x for x in items if x.get("id") == cid), None)
+
+    if found:
+        # Обновляем существующего
+        found["freq"] = int(found.get("freq", 0)) + freq
+        if context and not found.get("context"):
+            found["context"] = context[:400]
+        found["source"] = source
+        logger.debug(f"Updated candidate {cid}: {alias}")
+    else:
+        # Добавляем нового
+        items.append(
+            {
+                "id": cid,
+                "alias": alias.strip(),
+                "context": context[:400] if context else "",
+                "freq": freq,
+                "source": source,
+            }
+        )
+        logger.info(f"Added new candidate {cid}: {alias}")
+
+    save_candidates_raw(items)

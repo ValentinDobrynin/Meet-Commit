@@ -126,6 +126,17 @@ async def receive_input(msg: Message, state: FSMContext):
         await extra_entered(msg, state)
         return
 
+    # Проверяем, не находимся ли мы в состоянии People Miner
+    from app.bot.states.people_states import PeopleStates
+
+    if current_state == PeopleStates.waiting_assign_en:
+        # Если да, то это ввод английского имени для People Miner
+        # Передаем управление соответствующему обработчику
+        from app.bot.handlers_people import set_en_name_handler
+
+        await set_en_name_handler(msg, state)
+        return
+
     raw_bytes: bytes | None = None
     text: str | None = None
     filename = "message.txt"
