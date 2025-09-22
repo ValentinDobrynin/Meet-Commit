@@ -368,6 +368,10 @@ async def admin_help_handler(message: Message) -> None:
         "🔍 <code>/retag &lt;meeting_id&gt; dry-run</code> - Показать diff тегов\n"
         "♻️ <code>/retag &lt;meeting_id&gt;</code> - Пересчитать и обновить теги\n"
         "🏷️ <code>/review_tags &lt;meeting_id&gt;</code> - Интерактивное ревью тегов\n\n"
+        "🔄 <b>Notion синхронизация:</b>\n"
+        "📥 <code>/sync_tags</code> - Синхронизировать правила из Notion Tag Catalog\n"
+        "🔍 <code>/sync_tags dry-run</code> - Проверить синхронизацию без применения\n"
+        "📊 <code>/sync_status</code> - Статус последней синхронизации\n\n"
         "👥 <b>Управление людьми:</b>\n"
         "🧩 <code>/people_miner</code> - Интерактивная верификация кандидатов\n"
         "📊 <code>/people_stats</code> - Статистика людей и кандидатов\n"
@@ -477,3 +481,136 @@ async def review_tags_handler(message: Message, state: FSMContext) -> None:
     except Exception as e:
         logger.error(f"Error in review_tags_handler: {e}")
         await message.answer(f"❌ <b>Ошибка запуска ревью тегов</b>\n\n<code>{str(e)}</code>")
+
+
+@router.message(F.text.regexp(r"^/sync_tags(\s+dry-run)?$"))
+async def sync_tags_handler(message: Message) -> None:
+    """Синхронизирует правила тегирования из Notion Tag Catalog."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        if not message.text:
+            await message.answer("❌ Неправильный формат команды")
+            return
+
+        # Проверяем режим dry-run
+        is_dry_run = "dry-run" in message.text
+
+        await message.answer(
+            f"🔄 <b>Синхронизация правил тегирования{'(dry-run)' if is_dry_run else ''}</b>\n\n"
+            "⏳ Подключаюсь к Notion Tag Catalog..."
+        )
+
+        # Импортируем функции синхронизации
+        from app.core.tags_notion_sync import smart_sync
+
+        # Выполняем синхронизацию
+        result = smart_sync(dry_run=is_dry_run)
+
+        if result.success:
+            # Формируем сообщение об успехе
+            breakdown_text = (
+                ", ".join(
+                    f"{kind}={count}" for kind, count in sorted(result.kind_breakdown.items())
+                )
+                if result.kind_breakdown
+                else "нет данных"
+            )
+
+            success_message = (
+                f"✅ <b>Синхронизация {'проверена' if is_dry_run else 'завершена'}</b>\n\n"
+                f"📊 <b>Источник:</b> {result.source}\n"
+                f"🏷️ <b>Правил загружено:</b> {result.rules_count}\n"
+                f"📋 <b>По категориям:</b> {breakdown_text}\n"
+            )
+
+            if result.cache_updated:
+                success_message += "💾 <b>Кэш обновлен</b>\n"
+
+            if is_dry_run:
+                success_message += "\n💡 Для применения запустите без dry-run"
+            else:
+                success_message += "\n🎯 Правила активны в тэггере"
+
+            await message.answer(success_message)
+        else:
+            # Сообщение об ошибке
+            error_message = (
+                f"❌ <b>Ошибка синхронизации</b>\n\n"
+                f"📊 <b>Источник:</b> {result.source}\n"
+                f"❌ <b>Ошибка:</b> <code>{result.error}</code>\n\n"
+                f"💡 Проверьте настройки Notion или используйте YAML fallback"
+            )
+
+            await message.answer(error_message)
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(
+            f"Admin {user_id} executed sync_tags (dry_run={is_dry_run}): "
+            f"success={result.success}, source={result.source}, count={result.rules_count}"
+        )
+
+    except Exception as e:
+        logger.error(f"Error in sync_tags_handler: {e}")
+        await message.answer(f"❌ <b>Ошибка синхронизации</b>\n\n<code>{str(e)}</code>")
+
+
+@router.message(F.text == "/sync_status")
+async def sync_status_handler(message: Message) -> None:
+    """Показывает статус синхронизации правил тегирования."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        from app.core.tags_notion_sync import get_sync_status
+        from app.gateways.notion_tag_catalog import get_tag_catalog_info
+
+        # Получаем статус синхронизации
+        sync_status = get_sync_status()
+        catalog_info = get_tag_catalog_info()
+
+        # Формируем сообщение
+        status_text = (
+            f"📊 <b>Статус синхронизации Tag Catalog</b>\n\n"
+            f"🕐 <b>Последняя синхронизация:</b> {sync_status.get('last_sync', 'никогда')}\n"
+            f"⏱️ <b>Прошло времени:</b> {sync_status.get('hours_since_sync', 0):.1f} часов\n"
+            f"📍 <b>Источник:</b> {sync_status.get('source', 'неизвестно')}\n"
+            f"✅ <b>Статус:</b> {sync_status.get('status', 'неизвестно')}\n"
+            f"🏷️ <b>Правил загружено:</b> {sync_status.get('rules_count', 0)}\n"
+        )
+
+        # Добавляем breakdown по категориям
+        breakdown = sync_status.get("kind_breakdown", {})
+        if breakdown:
+            breakdown_text = ", ".join(f"{k}={v}" for k, v in sorted(breakdown.items()))
+            status_text += f"📋 <b>По категориям:</b> {breakdown_text}\n"
+
+        # Добавляем статус Notion
+        status_text += "\n🔗 <b>Notion Tag Catalog:</b>\n"
+        if catalog_info.get("accessible"):
+            status_text += (
+                f"   ✅ Доступен\n"
+                f"   📝 Название: {catalog_info.get('title', 'неизвестно')}\n"
+                f"   🔧 Поля: {len(catalog_info.get('properties', []))}\n"
+            )
+        else:
+            status_text += f"   ❌ Недоступен: {catalog_info.get('error', 'неизвестная ошибка')}\n"
+
+        # Добавляем статус кэша
+        status_text += f"\n💾 <b>Локальный кэш:</b> {'✅ доступен' if sync_status.get('cache_available') else '❌ отсутствует'}\n"
+
+        # Добавляем ошибку если есть
+        if sync_status.get("error"):
+            status_text += f"\n❌ <b>Последняя ошибка:</b>\n<code>{sync_status['error']}</code>"
+
+        await message.answer(status_text)
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} requested sync status")
+
+    except Exception as e:
+        logger.error(f"Error in sync_status_handler: {e}")
+        await message.answer(f"❌ <b>Ошибка получения статуса</b>\n\n<code>{str(e)}</code>")

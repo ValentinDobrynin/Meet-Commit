@@ -68,3 +68,4 @@ logs/
 # Database
 *.db
 *.sqlite3
+scripts/

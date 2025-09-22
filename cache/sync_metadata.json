@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "source": "notion",
+  "rules_count": 3,
+  "kind_breakdown": {
+    "Finance": 2,
+    "Business": 1
+  },
+  "error": null,
+  "cache_updated": true,
+  "timestamp": 1758571808.677901
+}

@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     commits_db_id: str | None = Field(default=None, alias="COMMITS_DB_ID")
     review_db_id: str | None = Field(default=None, alias="REVIEW_DB_ID")
 
+    # Новые базы для синхронизации
+    notion_db_tag_catalog_id: str | None = Field(default=None, alias="NOTION_DB_TAG_CATALOG_ID")
+    notion_db_project_catalog_id: str | None = Field(
+        default=None, alias="NOTION_DB_PROJECT_CATALOG_ID"
+    )
+
     # Unified tagging settings
     tags_mode: str = "both"  # v0 | v1 | both
 
@@ -41,6 +47,11 @@ class Settings(BaseSettings):
     tags_review_enabled: bool = True
     tags_review_ttl_sec: int = 900  # 15 минут на интерактивную сессию
     enable_tag_edit_log: bool = True
+
+    # Notion Tag Catalog sync settings
+    notion_sync_enabled: bool = False  # По умолчанию выключено (опциональная функция)
+    notion_sync_interval_hours: int = 24  # Автосинхронизация каждые 24 часа
+    notion_sync_fallback_to_yaml: bool = True  # Fallback на YAML при ошибках
 
     def is_admin(self, user_id: int | None) -> bool:
         """Проверяет, является ли пользователь администратором."""

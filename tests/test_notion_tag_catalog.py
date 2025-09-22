@@ -1,0 +1,274 @@
+"""Тесты для модуля синхронизации с Notion Tag Catalog."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from app.gateways.notion_tag_catalog import (
+    _parse_checkbox,
+    _parse_number,
+    _parse_rich_text,
+    _parse_select,
+    _parse_title,
+    fetch_tag_catalog,
+    get_tag_catalog_info,
+    validate_tag_catalog_access,
+)
+
+
+class TestNotionParsers:
+    """Тесты для парсеров Notion properties."""
+
+    def test_parse_rich_text_valid(self):
+        """Тест парсинга валидного rich_text."""
+        prop = {"rich_text": [{"text": {"content": "line1"}}, {"text": {"content": "line2"}}]}
+
+        result = _parse_rich_text(prop)
+        assert result == "line1\nline2"
+
+    def test_parse_rich_text_empty(self):
+        """Тест парсинга пустого rich_text."""
+        assert _parse_rich_text(None) == ""
+        assert _parse_rich_text({}) == ""
+        assert _parse_rich_text({"rich_text": []}) == ""
+
+    def test_parse_select_valid(self):
+        """Тест парсинга валидного select."""
+        prop = {"select": {"name": "Finance"}}
+        assert _parse_select(prop) == "Finance"
+
+    def test_parse_select_empty(self):
+        """Тест парсинга пустого select."""
+        assert _parse_select(None) == ""
+        assert _parse_select({}) == ""
+        assert _parse_select({"select": None}) == ""
+
+    def test_parse_number_valid(self):
+        """Тест парсинга валидного number."""
+        prop = {"number": 2.5}
+        assert _parse_number(prop) == 2.5
+
+    def test_parse_number_default(self):
+        """Тест парсинга number с дефолтным значением."""
+        assert _parse_number(None) == 1.0
+        assert _parse_number({}) == 1.0
+        assert _parse_number({"number": None}) == 1.0
+
+    def test_parse_checkbox_valid(self):
+        """Тест парсинга валидного checkbox."""
+        assert _parse_checkbox({"checkbox": True}) is True
+        assert _parse_checkbox({"checkbox": False}) is False
+
+    def test_parse_checkbox_default(self):
+        """Тест парсинга checkbox с дефолтным значением."""
+        assert _parse_checkbox(None) is False
+        assert _parse_checkbox({}) is False
+
+    def test_parse_title_valid(self):
+        """Тест парсинга валидного title."""
+        prop = {"title": [{"text": {"content": "Test"}}, {"text": {"content": " Title"}}]}
+
+        result = _parse_title(prop)
+        assert result == "Test Title"
+
+    def test_parse_title_empty(self):
+        """Тест парсинга пустого title."""
+        assert _parse_title(None) == ""
+        assert _parse_title({}) == ""
+        assert _parse_title({"title": []}) == ""
+
+
+class TestTagCatalogAccess:
+    """Тесты для проверки доступа к Tag Catalog."""
+
+    def test_validate_access_disabled(self):
+        """Тест когда синхронизация отключена."""
+        with patch("app.gateways.notion_tag_catalog.settings.notion_sync_enabled", False):
+            assert validate_tag_catalog_access() is False
+
+    def test_validate_access_missing_credentials(self):
+        """Тест когда отсутствуют учетные данные."""
+        with (
+            patch("app.gateways.notion_tag_catalog.settings.notion_sync_enabled", True),
+            patch("app.gateways.notion_tag_catalog.settings.notion_token", None),
+        ):
+            assert validate_tag_catalog_access() is False
+
+    @patch("app.gateways.notion_tag_catalog._create_client")
+    def test_validate_access_success(self, mock_create_client):
+        """Тест успешной валидации доступа."""
+        # Мокаем HTTP клиент
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_client.get.return_value = mock_response
+        mock_create_client.return_value = mock_client
+
+        with (
+            patch("app.gateways.notion_tag_catalog.settings.notion_sync_enabled", True),
+            patch("app.gateways.notion_tag_catalog.settings.notion_token", "test_token"),
+            patch(
+                "app.gateways.notion_tag_catalog.settings.notion_db_tag_catalog_id", "test_db_id"
+            ),
+        ):
+            result = validate_tag_catalog_access()
+            assert result is True
+            mock_client.close.assert_called_once()
+
+    @patch("app.gateways.notion_tag_catalog._create_client")
+    def test_validate_access_failure(self, mock_create_client):
+        """Тест неудачной валидации доступа."""
+        # Мокаем HTTP клиент с ошибкой
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_client.get.return_value = mock_response
+        mock_create_client.return_value = mock_client
+
+        with (
+            patch("app.gateways.notion_tag_catalog.settings.notion_sync_enabled", True),
+            patch("app.gateways.notion_tag_catalog.settings.notion_token", "test_token"),
+            patch(
+                "app.gateways.notion_tag_catalog.settings.notion_db_tag_catalog_id", "test_db_id"
+            ),
+        ):
+            result = validate_tag_catalog_access()
+            assert result is False
+
+
+class TestFetchTagCatalog:
+    """Тесты для загрузки правил из Tag Catalog."""
+
+    @patch("app.gateways.notion_tag_catalog._create_client")
+    def test_fetch_catalog_success(self, mock_create_client):
+        """Тест успешной загрузки каталога."""
+        # Мокаем HTTP клиент
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "results": [
+                {
+                    "id": "rule1",
+                    "properties": {
+                        "Name": {"title": [{"text": {"content": "IFRS"}}]},
+                        "Kind": {"select": {"name": "Finance"}},
+                        "Pattern(s)": {"rich_text": [{"text": {"content": "ifrs\nreporting"}}]},
+                        "Exclude": {"rich_text": []},
+                        "Weight": {"number": 2.0},
+                        "Active": {"checkbox": True},
+                    },
+                }
+            ]
+        }
+        mock_client.post.return_value = mock_response
+        mock_create_client.return_value = mock_client
+
+        with patch("app.gateways.notion_tag_catalog.settings.notion_sync_enabled", True):
+            rules = fetch_tag_catalog()
+
+            assert len(rules) == 1
+            rule = rules[0]
+            assert rule["tag"] == "Finance/IFRS"
+            assert rule["patterns"] == ["ifrs", "reporting"]
+            assert rule["weight"] == 2.0
+
+    def test_fetch_catalog_disabled(self):
+        """Тест когда синхронизация отключена."""
+        with patch("app.gateways.notion_tag_catalog.settings.notion_sync_enabled", False):
+            with pytest.raises(RuntimeError, match="Notion sync is disabled"):
+                fetch_tag_catalog()
+
+    @patch("app.gateways.notion_tag_catalog._create_client")
+    def test_fetch_catalog_api_error(self, mock_create_client):
+        """Тест обработки ошибки API."""
+        # Мокаем HTTP клиент с ошибкой
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+        mock_client.post.return_value = mock_response
+        mock_create_client.return_value = mock_client
+
+        with patch("app.gateways.notion_tag_catalog.settings.notion_sync_enabled", True):
+            with pytest.raises(RuntimeError, match="Notion API error 500"):
+                fetch_tag_catalog()
+
+    @patch("app.gateways.notion_tag_catalog._create_client")
+    def test_fetch_catalog_incomplete_rules(self, mock_create_client):
+        """Тест обработки неполных правил."""
+        # Мокаем HTTP клиент с неполными данными
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "results": [
+                {
+                    "id": "rule1",
+                    "properties": {
+                        "Name": {"title": [{"text": {"content": "IFRS"}}]},
+                        "Kind": {"select": {"name": "Finance"}},
+                        "Pattern(s)": {"rich_text": []},  # Пустые паттерны
+                        "Active": {"checkbox": True},
+                    },
+                },
+                {
+                    "id": "rule2",
+                    "properties": {
+                        "Name": {"title": []},  # Пустое имя
+                        "Kind": {"select": {"name": "Business"}},
+                        "Pattern(s)": {"rich_text": [{"text": {"content": "test"}}]},
+                        "Active": {"checkbox": True},
+                    },
+                },
+            ]
+        }
+        mock_client.post.return_value = mock_response
+        mock_create_client.return_value = mock_client
+
+        with patch("app.gateways.notion_tag_catalog.settings.notion_sync_enabled", True):
+            rules = fetch_tag_catalog()
+
+            # Должны быть отфильтрованы неполные правила
+            assert len(rules) == 0
+
+
+class TestTagCatalogInfo:
+    """Тесты для получения информации о каталоге."""
+
+    def test_get_info_not_accessible(self):
+        """Тест когда каталог недоступен."""
+        with patch(
+            "app.gateways.notion_tag_catalog.validate_tag_catalog_access", return_value=False
+        ):
+            info = get_tag_catalog_info()
+
+            assert info["accessible"] is False
+            assert "error" in info
+
+    @patch("app.gateways.notion_tag_catalog._create_client")
+    def test_get_info_success(self, mock_create_client):
+        """Тест успешного получения информации."""
+        # Мокаем HTTP клиент
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "title": [{"plain_text": "Tag Catalog"}],
+            "created_time": "2025-01-01T00:00:00.000Z",
+            "last_edited_time": "2025-01-02T00:00:00.000Z",
+            "properties": {"Name": {}, "Kind": {}, "Pattern(s)": {}, "Weight": {}, "Active": {}},
+        }
+        mock_client.get.return_value = mock_response
+        mock_create_client.return_value = mock_client
+
+        with patch(
+            "app.gateways.notion_tag_catalog.validate_tag_catalog_access", return_value=True
+        ):
+            info = get_tag_catalog_info()
+
+            assert info["accessible"] is True
+            assert info["title"] == "Tag Catalog"
+            assert len(info["properties"]) == 5

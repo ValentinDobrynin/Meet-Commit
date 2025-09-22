@@ -238,6 +238,40 @@ class TaggerV1Scored:
                     self._compiled_rules = {}
                     self._update_stats({})
 
+    def _load_and_compile_rules_from_dict(self, rules_dict: dict[str, Any]) -> None:
+        """
+        Загружает и компилирует правила из словаря (для Notion синхронизации).
+
+        Args:
+            rules_dict: Словарь правил в YAML формате
+        """
+        with _rules_lock:
+            try:
+                if not rules_dict:
+                    logger.warning("Empty rules dictionary provided")
+                    self._compiled_rules = {}
+                    self._update_stats({})
+                    return
+
+                # Нормализуем и валидируем
+                normalized_rules = self._normalize_yaml_format(rules_dict)
+
+                # Компилируем правила
+                compiled_rules = self._compile_rules(normalized_rules)
+
+                # Атомарно обновляем правила и статистику
+                self._compiled_rules = compiled_rules
+                self._update_stats(compiled_rules)
+
+                logger.info(f"Loaded {len(compiled_rules)} tagger rules from dictionary")
+
+            except Exception as e:
+                logger.error(f"Error loading tagger rules from dict: {e}")
+                # При ошибке оставляем старые правила
+                if not hasattr(self, "_compiled_rules"):
+                    self._compiled_rules = {}
+                    self._update_stats({})
+
     def reload_rules(self) -> int:
         """Перезагружает правила из файла.
 

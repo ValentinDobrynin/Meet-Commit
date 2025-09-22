@@ -1,0 +1,41 @@
+[
+  {
+    "id": "276344c5-6766-81bc-ac58-f23788a4ffc9",
+    "tag": "Finance/Budget",
+    "patterns": [
+      "budget",
+      "бюджет",
+      "план",
+      "финплан"
+    ],
+    "exclude": [
+      "email",
+      "spam"
+    ],
+    "weight": 1.0
+  },
+  {
+    "id": "276344c5-6766-81b4-a800-fd6505c6b1ca",
+    "tag": "Finance/IFRS",
+    "patterns": [
+      "ifrs",
+      "financial reporting",
+      "отчетность",
+      "международные стандарты"
+    ],
+    "exclude": [],
+    "weight": 2.0
+  },
+  {
+    "id": "276344c5-6766-81fe-8bb2-c3c72564d863",
+    "tag": "Business/Lavka",
+    "patterns": [
+      "lavka",
+      "лавка",
+      "marketplace",
+      "маркетплейс"
+    ],
+    "exclude": [],
+    "weight": 1.5
+  }
+]
