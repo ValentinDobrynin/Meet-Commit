@@ -41,7 +41,7 @@ class TestReviewCommands:
             "meeting_page_id": "87654321-4321-4321-4321-210987654321",
         }
 
-    @patch("app.bot.handlers.list_open_reviews")
+    @patch("app.core.review_queue.list_open_reviews")
     @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_cmd_review_success(self, mock_list_pending, mock_message, sample_review_item):
@@ -62,7 +62,7 @@ class TestReviewCommands:
         assert "dir=theirs" in call_args
         assert "who=Daniil" in call_args
 
-    @patch("app.bot.handlers.list_open_reviews")
+    @patch("app.core.review_queue.list_open_reviews")
     @pytest.mark.asyncio
     async def test_cmd_review_empty(self, mock_list_pending, mock_message):
         """Тест команды /review с пустой очередью."""
@@ -78,7 +78,7 @@ class TestReviewCommands:
         assert "💡" in call_args[0][0]  # Проверяем наличие улучшенного текста
         assert call_args[1]["reply_markup"] is not None  # Проверяем наличие клавиатуры
 
-    @patch("app.bot.handlers.list_open_reviews")
+    @patch("app.core.review_queue.list_open_reviews")
     @pytest.mark.asyncio
     async def test_cmd_review_with_limit(self, mock_list_pending, mock_message, sample_review_item):
         """Тест команды /review с указанием лимита."""
@@ -266,7 +266,9 @@ class TestReviewCommands:
         assert commit_item["direction"] == "theirs"
         assert commit_item["assignees"] == ["Daniil"]
 
-        mock_set_status.assert_called_once_with(sample_review_item["page_id"], "resolved", linked_commit_id="new_commit_id")
+        mock_set_status.assert_called_once_with(
+            sample_review_item["page_id"], "resolved", linked_commit_id="new_commit_id"
+        )
         # Проверяем, что ответ содержит основную информацию
         mock_message.answer.assert_called_once()
         call_args = mock_message.answer.call_args[0][0]
@@ -298,7 +300,7 @@ class TestReviewCommandsErrorHandling:
         msg.answer = AsyncMock()
         return msg
 
-    @patch("app.bot.handlers.list_open_reviews")
+    @patch("app.core.review_queue.list_open_reviews")
     @pytest.mark.asyncio
     async def test_cmd_review_exception(self, mock_list_pending, mock_message):
         """Тест обработки исключения в команде /review."""

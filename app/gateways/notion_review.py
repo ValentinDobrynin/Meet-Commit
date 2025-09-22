@@ -233,24 +233,22 @@ def set_status(page_id: str, status: str, *, linked_commit_id: str | None = None
         linked_commit_id: ID связанного коммита (для resolved статуса)
     """
     from datetime import datetime
-    
+
     client = _create_client()
 
     try:
         props: dict[str, Any] = {
             "Status": {"select": {"name": status}},
         }
-        
+
         # Добавляем Resolved At для закрытых статусов
         if status in {"resolved", "dropped"}:
-            props["Resolved At"] = {
-                "date": {"start": datetime.now(UTC).isoformat()}
-            }
-        
+            props["Resolved At"] = {"date": {"start": datetime.now(UTC).isoformat()}}
+
         # Добавляем связь с коммитом для resolved
         if linked_commit_id and status == "resolved":
             props["Linked Commit"] = {"relation": [{"id": linked_commit_id}]}
-        
+
         response = client.patch(
             f"{NOTION_API}/pages/{page_id}",
             json={"properties": props},
@@ -267,7 +265,7 @@ def set_status(page_id: str, status: str, *, linked_commit_id: str | None = None
 def archive(page_id: str) -> None:
     """
     Архивирует страницу Review (soft-удаление).
-    
+
     Args:
         page_id: ID страницы в Notion
     """
@@ -355,7 +353,7 @@ def list_pending(limit: int = 5) -> list[dict]:
     """
     # Открытые статусы (не resolved/dropped)
     OPEN_STATUSES = ["pending", "needs-review"]
-    
+
     client = _create_client()
 
     try:
@@ -363,8 +361,7 @@ def list_pending(limit: int = 5) -> list[dict]:
         payload = {
             "filter": {
                 "or": [
-                    {"property": "Status", "select": {"equals": status}}
-                    for status in OPEN_STATUSES
+                    {"property": "Status", "select": {"equals": status}} for status in OPEN_STATUSES
                 ]
             },
             "page_size": limit,

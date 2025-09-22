@@ -35,6 +35,7 @@ from app.gateways.notion_review import (
     set_status,
     update_fields,
 )
+from app.core.review_queue import list_open_reviews
 
 logger = logging.getLogger(__name__)
 
@@ -591,7 +592,6 @@ async def cmd_review(msg: Message):
         limit = int(parts[1]) if len(parts) > 1 else 5
 
         # Используем новую логику фильтрации открытых записей
-        from app.core.review_queue import list_open_reviews
         items = list_open_reviews(limit=limit)
 
         if not items:
@@ -703,12 +703,12 @@ async def cmd_delete(msg: Message):
         try:
             # Валидируем действие
             from app.core.review_queue import validate_review_action
-            
+
             is_valid, error_msg = validate_review_action(item, "delete")
             if not is_valid:
                 await msg.answer(f"❌ {error_msg}")
                 return
-            
+
             set_status(item["page_id"], REVIEW_STATUS_DROPPED)
             await msg.answer(f"✅ [{short_id}] Удалено (dropped).")
             logger.info(f"Review item {short_id} marked as dropped")
@@ -781,7 +781,7 @@ async def cmd_confirm(msg: Message):
 
         # Валидируем действие
         from app.core.review_queue import validate_review_action
-        
+
         is_valid, error_msg = validate_review_action(item, "confirm")
         if not is_valid:
             await msg.answer(f"❌ {error_msg}")
@@ -791,7 +791,7 @@ async def cmd_confirm(msg: Message):
             # Получаем ID созданного/обновленного коммита
             commit_ids = result.get("created", []) + result.get("updated", [])
             commit_id = commit_ids[0] if commit_ids else None
-            
+
             # Помечаем review как resolved с привязкой к коммиту
             try:
                 set_status(item["page_id"], REVIEW_STATUS_RESOLVED, linked_commit_id=commit_id)
@@ -800,7 +800,9 @@ async def cmd_confirm(msg: Message):
                     f"🔗 Review запись помечена как resolved"
                     + (f", привязан коммит {commit_id[:8]}..." if commit_id else "")
                 )
-                logger.info(f"Review item {short_id} confirmed, linked to commit {commit_id[:8] if commit_id else 'none'}")
+                logger.info(
+                    f"Review item {short_id} confirmed, linked to commit {commit_id[:8] if commit_id else 'none'}"
+                )
             except Exception as e:
                 logger.error(f"Error setting resolved status: {e}")
                 await msg.answer(
