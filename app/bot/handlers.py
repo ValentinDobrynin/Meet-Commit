@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 router = Router()
 
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts" / "summarization"
 MAX_PREVIEW_LINES = 12
 
 

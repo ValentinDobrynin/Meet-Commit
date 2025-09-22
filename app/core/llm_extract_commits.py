@@ -44,7 +44,7 @@ class ExtractedCommit(BaseModel):
 
 # ==== Загрузка промпта и сбор сообщения ====
 
-PROMPT_PATH = Path("prompts/commits_extract_ru.md")
+PROMPT_PATH = Path("prompts/extraction/commits_extract_ru.md")
 
 
 def _load_prompt() -> str:
