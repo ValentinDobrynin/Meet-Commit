@@ -197,26 +197,27 @@ class TestAdminAccessControl:
     async def test_admin_config_command(self):
         """Тест команды admin_config."""
         from app.bot.handlers_admin import admin_config_handler
-        
+
         # Создаем мок сообщения от админа
         message = AsyncMock()
         message.from_user.id = 50929545
         message.answer = AsyncMock()
-        
+
         # Мокаем функции
         mock_config = {
             "admin_ids": [50929545, 123456],
             "source": "APP_ADMIN_USER_IDS=50929545,123456",
             "count": 2,
             "env_file_exists": True,
-            "recommended_setup": "Создайте .env файл с APP_ADMIN_USER_IDS=your_telegram_id"
+            "recommended_setup": "Создайте .env файл с APP_ADMIN_USER_IDS=your_telegram_id",
         }
-        
-        with patch("app.bot.handlers_admin._is_admin", return_value=True), \
-             patch("app.settings.get_admin_config_info", return_value=mock_config):
-            
+
+        with (
+            patch("app.bot.handlers_admin._is_admin", return_value=True),
+            patch("app.settings.get_admin_config_info", return_value=mock_config),
+        ):
             await admin_config_handler(message)
-            
+
             # Проверяем, что команда выполнилась
             message.answer.assert_called_once()
             call_args = message.answer.call_args[0][0]

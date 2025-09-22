@@ -9,6 +9,7 @@ import logging
 import re
 
 from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from app.core.tagger_v1_scored import validate_rules
@@ -365,7 +366,8 @@ async def admin_help_handler(message: Message) -> None:
         "🧪 <code>/test_tags &lt;текст&gt;</code> - Протестировать scored тэггер\n\n"
         "🔄 <b>Retag функции:</b>\n"
         "🔍 <code>/retag &lt;meeting_id&gt; dry-run</code> - Показать diff тегов\n"
-        "♻️ <code>/retag &lt;meeting_id&gt;</code> - Пересчитать и обновить теги\n\n"
+        "♻️ <code>/retag &lt;meeting_id&gt;</code> - Пересчитать и обновить теги\n"
+        "🏷️ <code>/review_tags &lt;meeting_id&gt;</code> - Интерактивное ревью тегов\n\n"
         "👥 <b>Управление людьми:</b>\n"
         "🧩 <code>/people_miner</code> - Интерактивная верификация кандидатов\n"
         "📊 <code>/people_stats</code> - Статистика людей и кандидатов\n"
@@ -386,13 +388,13 @@ async def admin_config_handler(message: Message) -> None:
     if not _is_admin(message):
         await message.answer("❌ Команда доступна только администраторам")
         return
-        
+
     try:
         from app.settings import get_admin_config_info
-        
+
         config = get_admin_config_info()
         current_user = message.from_user.id if message.from_user else None
-        
+
         config_text = (
             f"🔧 <b>Настройки админских прав</b>\n\n"
             f"👤 <b>Ваш ID:</b> <code>{current_user}</code>\n"
@@ -417,3 +419,61 @@ async def admin_config_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Failed to get admin config: {e}")
         await message.answer(f"❌ <b>Ошибка получения настроек</b>\n\n<code>{str(e)}</code>")
+
+
+@router.message(F.text.regexp(r"^/review_tags\s+([0-9a-f\-]{10,})$"))
+async def review_tags_handler(message: Message, state: FSMContext) -> None:
+    """Запускает интерактивное ревью тегов для указанной встречи."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        if not message.text:
+            await message.answer("❌ Неправильный формат команды")
+            return
+
+        # Парсим ID встречи
+        match = re.match(r"^/review_tags\s+([0-9a-f\-]{10,})$", message.text)
+        if not match:
+            await message.answer("❌ Неправильный формат ID встречи")
+            return
+
+        meeting_id = match.group(1).strip()
+
+        await message.answer(
+            f"🔍 <b>Загружаю теги встречи...</b>\n\n⏳ ID: <code>{meeting_id}</code>"
+        )
+
+        # Импортируем функции
+        from app.bot.handlers_tags_review import start_tags_review
+        from app.gateways.notion_meetings import fetch_meeting_page, validate_meeting_access
+
+        # Проверяем доступ к странице
+        if not validate_meeting_access(meeting_id):
+            await message.answer(f"❌ Страница встречи недоступна: {meeting_id}")
+            return
+
+        # Получаем данные страницы
+        page_data = fetch_meeting_page(meeting_id)
+        current_tags = page_data.get("current_tags", [])
+
+        if not current_tags:
+            await message.answer("❌ У встречи нет тегов для ревью")
+            return
+
+        # Запускаем интерактивное ревью
+        user_id = message.from_user.id if message.from_user else 0
+        await start_tags_review(
+            meeting_id=meeting_id,
+            original_tags=current_tags,
+            user_id=user_id,
+            message=message,
+            state=state,
+        )
+
+        logger.info(f"Admin {user_id} started manual tags review for meeting {meeting_id}")
+
+    except Exception as e:
+        logger.error(f"Error in review_tags_handler: {e}")
+        await message.answer(f"❌ <b>Ошибка запуска ревью тегов</b>\n\n<code>{str(e)}</code>")

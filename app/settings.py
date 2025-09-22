@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     tagger_v1_enabled: bool = True
     tagger_v1_rules_file: str = "data/tag_rules.yaml"
 
+    # Tags review settings
+    tags_review_enabled: bool = True
+    tags_review_ttl_sec: int = 900  # 15 минут на интерактивную сессию
+    enable_tag_edit_log: bool = True
+
     def is_admin(self, user_id: int | None) -> bool:
         """Проверяет, является ли пользователь администратором."""
         return user_id is not None and user_id in _admin_ids_set
@@ -65,16 +70,19 @@ if raw_admin_ids:
         _admin_ids_set = set(admin_ids)
         source_var = "APP_ADMIN_USER_IDS" if os.getenv("APP_ADMIN_USER_IDS") else "ADMIN_USER_IDS"
         _admin_ids_source = f"{source_var}={raw_admin_ids}"
-        
+
         # Логируем источник настроек для диагностики
         import logging
+
         logger = logging.getLogger(__name__)
         logger.info(f"Admin IDs loaded from {_admin_ids_source}: {admin_ids}")
-        
+
     except ValueError as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.warning(f"Failed to parse admin IDs from {raw_admin_ids}: {e}")
+
 
 def get_admin_config_info() -> dict[str, Any]:
     """Возвращает информацию о настройке админских прав для диагностики."""
@@ -83,7 +91,7 @@ def get_admin_config_info() -> dict[str, Any]:
         "source": _admin_ids_source,
         "count": len(_admin_ids_set),
         "env_file_exists": os.path.exists(".env"),
-        "recommended_setup": "Создайте .env файл с APP_ADMIN_USER_IDS=your_telegram_id"
+        "recommended_setup": "Создайте .env файл с APP_ADMIN_USER_IDS=your_telegram_id",
     }
 
 

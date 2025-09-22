@@ -548,10 +548,27 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
         for part in chunks:
             await msg.answer(part)
 
-        # Добавляем главное меню с кнопками
-        from app.bot.handlers_inline import build_main_menu_kb
+        # 7) Запускаем интерактивное ревью тегов (если включено)
+        try:
+            from app.bot.handlers_tags_review import start_tags_review
 
-        await msg.answer("🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb())
+            meeting_page_id = _extract_page_id_from_url(notion_url)
+            user_id = msg.from_user.id if msg.from_user else 0
+
+            await start_tags_review(
+                meeting_id=meeting_page_id,
+                original_tags=tags,
+                user_id=user_id,
+                message=msg,
+                state=state,
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to start tags review: {e}")
+            # Не критично - показываем обычное меню
+            from app.bot.handlers_inline import build_main_menu_kb
+
+            await msg.answer("🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb())
 
     except Exception as e:
         await msg.answer(f"Не удалось обработать. Причина: {type(e).__name__}: {e}")

@@ -13,6 +13,7 @@ from .handlers import router
 from .handlers_admin import router as admin_router
 from .handlers_inline import router as inline_router
 from .handlers_people import router as people_router
+from .handlers_tags_review import router as tags_review_router
 from .init import build_bot
 
 # Загружаем переменные окружения из .env файла ПЕРЕД импортами
@@ -78,6 +79,7 @@ dp.include_router(router)
 dp.include_router(inline_router)
 dp.include_router(admin_router)
 dp.include_router(people_router)
+dp.include_router(tags_review_router)
 
 
 def acquire_lock():
