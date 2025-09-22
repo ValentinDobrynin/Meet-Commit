@@ -41,9 +41,27 @@ def _save_json(p: Path, data: dict) -> None:
 
 def load_people() -> list[dict]:
     """Загружает список людей из основного словаря."""
-    data = _load_json(PEOPLE, {"people": []})
-    people = data.get("people", [])
-    return people if isinstance(people, list) else []
+    if not PEOPLE.exists():
+        logger.debug(f"File {PEOPLE} does not exist")
+        return []
+
+    try:
+        with open(PEOPLE, encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Поддерживаем оба формата: новый [dict, ...] и старый {"people": [dict, ...]}
+        if isinstance(data, list):
+            return data  # Новый формат (текущий)
+        elif isinstance(data, dict) and "people" in data:
+            people_data = data["people"]
+            return people_data if isinstance(people_data, list) else []  # Старый формат
+        else:
+            logger.warning(f"Invalid format in {PEOPLE}: expected list or dict with 'people' key")
+            return []
+
+    except (json.JSONDecodeError, OSError) as e:
+        logger.error(f"Failed to load {PEOPLE}: {e}")
+        return []
 
 
 def save_people(items: list[dict]) -> None:
@@ -109,10 +127,10 @@ def _build_alias_index() -> dict[str, str]:
     for p in load_people():
         name_en = (p.get("name_en") or "").strip()
         if not name_en:
-            continue
+            continue  # Пропускаем записи с пустым name_en
         idx[name_en.lower()] = name_en
         for alias in p.get("aliases", []):
-            if alias:
+            if alias and alias.strip():
                 idx[alias.lower()] = name_en
     return idx
 
@@ -142,7 +160,9 @@ def canonicalize_list(raw_names: list[str]) -> list[str]:
 
         name_en = idx.get(key)
         if not name_en:
-            continue
+            # Если имя не найдено в словаре, используем исходное имя с капитализацией
+            name_en = raw_name.strip()
+            logger.debug(f"Unknown person '{raw_name}' kept as-is (not in people.json)")
 
         if name_en.lower() in seen:
             continue

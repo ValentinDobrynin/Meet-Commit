@@ -148,7 +148,14 @@ def _load_people() -> list[dict]:
     try:
         with open(p, encoding="utf-8") as f:
             data = json.load(f)
-            return data.get("people", []) if isinstance(data, dict) else []
+            # Поддерживаем оба формата: новый [dict, ...] и старый {"people": [dict, ...]}
+            if isinstance(data, list):
+                return data  # Новый формат
+            elif isinstance(data, dict) and "people" in data:
+                people_data = data["people"]
+                return people_data if isinstance(people_data, list) else []  # Старый формат
+            else:
+                return []
     except (json.JSONDecodeError, FileNotFoundError):
         return []
 

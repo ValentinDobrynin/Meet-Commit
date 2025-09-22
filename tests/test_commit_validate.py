@@ -589,7 +589,7 @@ class TestValidateAndPartition:
             )
         ]
 
-        meeting_tags = ["meeting_tag", "project/ifrs"]
+        meeting_tags = ["Topic/Meeting", "Projects/IFRS"]
 
         result = validate_and_partition(
             commits,
@@ -601,11 +601,13 @@ class TestValidateAndPartition:
         assert len(result.to_commits) == 1
         commit = result.to_commits[0]
 
-        # Проверяем, что теги встречи добавлены
-        assert "meeting_tag" in commit.tags
-        assert "project/ifrs" in commit.tags
+        # Проверяем, что теги встречи добавлены согласно новой логике наследования
+        # Projects теги всегда наследуются
+        assert "Projects/IFRS" in commit.tags
+        # Topic теги наследуются
+        assert "Topic/Meeting" in commit.tags
+        # Существующий тег коммита сохраняется
         assert "existing_tag" in commit.tags
-        assert commit.tags == sorted(["existing_tag", "meeting_tag", "project/ifrs"])
 
     def test_validate_and_partition_no_tags_for_review(self):
         """Тест что теги не добавляются к элементам ревью."""

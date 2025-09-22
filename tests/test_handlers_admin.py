@@ -72,9 +72,10 @@ class TestTagsStatsHandler:
             },
             "mapping_rules": 18,
             "v1_stats": {
-                "total_tags": 21,
+                "total_rules": 21,
                 "total_patterns": 143,
-                "categories": {"Finance": 4, "Business": 3},
+                "total_excludes": 5,
+                "average_weight": 1.1,
             },
         }
 
@@ -87,7 +88,7 @@ class TestTagsStatsHandler:
             assert "both" in call_args
             assert "45 hits" in call_args
             assert "18" in call_args  # mapping rules
-            assert "21" in call_args  # total tags
+            assert "21" in call_args  # total rules
 
     @pytest.mark.asyncio
     async def test_tags_stats_error(self, mock_message):

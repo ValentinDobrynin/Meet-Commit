@@ -1,5 +1,6 @@
 import asyncio
 import fcntl
+import logging
 import os
 import sys
 import tempfile
@@ -16,6 +17,55 @@ from .init import build_bot
 
 # Загружаем переменные окружения из .env файла ПЕРЕД импортами
 load_dotenv()
+
+
+# Настройка логирования
+def setup_logging():
+    """Настраивает логирование для бота."""
+    # Создаем директорию для логов если не существует
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+
+    # Настраиваем форматирование
+    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
+
+    # Создаем обработчики
+    all_logs_handler = logging.FileHandler("logs/bot.log", encoding="utf-8")
+    all_logs_handler.setLevel(logging.INFO)
+
+    error_logs_handler = logging.FileHandler("logs/bot_errors.log", encoding="utf-8")
+    error_logs_handler.setLevel(logging.ERROR)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+
+    # Настраиваем форматтеры
+    formatter = logging.Formatter(log_format, date_format)
+    all_logs_handler.setFormatter(formatter)
+    error_logs_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+
+    # Настраиваем логгеры
+    logging.basicConfig(
+        level=logging.INFO,  # Возвращаем INFO уровень
+        handlers=[all_logs_handler, error_logs_handler, console_handler],
+    )
+
+    # Настраиваем уровни для разных модулей
+    logging.getLogger("aiogram").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+    # Создаем основной логгер для бота
+    logger = logging.getLogger("meet_commit_bot")
+    logger.setLevel(logging.INFO)
+
+    return logger
+
+
+# Инициализируем логирование
+logger = setup_logging()
 
 # Проверяем наличие обязательных переменных окружения
 try:
@@ -43,16 +93,16 @@ def acquire_lock():
         os.write(lock_fd, str(os.getpid()).encode())
         os.close(lock_fd)
 
-        print(f"Lock acquired. PID: {os.getpid()}")
+        logger.info(f"Lock acquired. PID: {os.getpid()}")
         return True
 
     except OSError as e:
         if e.errno == 11:  # EAGAIN - файл заблокирован
-            print("❌ Bot is already running! Another instance is active.")
-            print("   To stop the existing bot, run: pkill -f 'python app/bot/main.py'")
+            logger.error("Bot is already running! Another instance is active.")
+            logger.info("To stop the existing bot, run: pkill -f 'python app/bot/main.py'")
             return False
         else:
-            print(f"❌ Failed to acquire lock: {e}")
+            logger.error(f"Failed to acquire lock: {e}")
             return False
 
 
@@ -62,24 +112,26 @@ def release_lock():
     try:
         if lock_file.exists():
             lock_file.unlink()
-            print("Lock released.")
+            logger.info("Lock released.")
     except Exception as e:
-        print(f"Warning: Could not release lock: {e}")
+        logger.warning(f"Could not release lock: {e}")
 
 
 async def run() -> None:
     """Запуск Telegram бота"""
     try:
-        print("🤖 Starting bot in polling mode...")
+        logger.info("🤖 Starting bot in polling mode...")
 
         # Отправляем приветствия активным пользователям при запуске
         from app.bot.startup_greeting import send_startup_greetings_safe
 
+        logger.info("Sending startup greetings to active users...")
         await send_startup_greetings_safe(bot)
 
+        logger.info("Bot polling started. Waiting for messages...")
         await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
     except Exception as e:
-        print(f"❌ Bot error: {e}")
+        logger.error(f"Bot error: {e}", exc_info=True)
         raise
 
 
@@ -89,11 +141,12 @@ if __name__ == "__main__":
         sys.exit(1)
 
     try:
-        print("🚀 Meet-Commit Bot starting...")
+        logger.info("🚀 Meet-Commit Bot starting...")
         asyncio.run(run())
     except KeyboardInterrupt:
-        print("\n⏹️  Bot stopped by user")
+        logger.info("⏹️  Bot stopped by user")
     except Exception as e:
-        print(f"❌ Error starting bot: {e}")
+        logger.error(f"Error starting bot: {e}", exc_info=True)
     finally:
         release_lock()
+        logger.info("Bot shutdown completed")

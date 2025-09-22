@@ -59,7 +59,7 @@ def mock_people_data():
         {"name_en": "Daniil", "aliases": ["Даня", "Даниил", "Danya"]},
     ]
 
-    with patch("app.core.tagger_v1.load_people", return_value=test_people):
+    with patch("app.core.tagger_v1_scored.load_people", return_value=test_people):
         yield test_people
 
 

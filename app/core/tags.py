@@ -23,8 +23,9 @@ from functools import lru_cache
 from typing import Any
 
 from app.core.tagger import run as tagger_v0
-from app.core.tagger_v1 import clear_cache as reload_rules_v1
-from app.core.tagger_v1 import tag_text as tagger_v1
+from app.core.tagger_v1_scored import reload_rules
+from app.core.tagger_v1_scored import tag_text as tagger_v1
+from app.core.tagger_v1_scored import tag_text_scored as tagger_v1_scored
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,33 @@ _stats: dict[str, Any] = {
     "cache_hits": 0,
     "cache_misses": 0,
     "last_reload": None,
+    "total_calls": 0,
+    "start_time": time.time(),
+    "performance": {
+        "avg_response_time": 0.0,
+        "total_response_time": 0.0,
+        "call_count": 0,
+    },
+    "top_tags": {},  # tag -> count
+    "deduplication": {
+        "v0_tags_total": 0,
+        "v1_tags_total": 0,
+        "merged_tags_total": 0,
+        "duplicates_removed": 0,
+        "people_tags_preserved": 0,
+        "v1_priority_wins": 0,
+    },
+    "inheritance": {
+        "meeting_tags_total": 0,
+        "commit_tags_total": 0,
+        "inherited_tags": 0,
+        "duplicates_removed": 0,
+        "people_inherited": 0,
+        "business_inherited": 0,
+        "projects_inherited": 0,
+        "finance_inherited": 0,
+        "topic_inherited": 0,
+    },
 }
 
 
@@ -49,8 +77,35 @@ def _canonicalize_tag(tag: str) -> str:
 
 
 def _normalize_for_comparison(tag: str) -> str:
-    """Нормализует тег для сравнения (lowercase, collapse spaces)."""
-    return _canonicalize_tag(tag).lower().replace("_", " ").replace("-", " ")
+    """Улучшенная нормализация тега для сравнения.
+
+    Приводит теги к единому формату для дедупликации:
+    - Убирает префиксы (person/, area/, project/, topic/)
+    - Нормализует разделители (/, -, _ → пробел)
+    - Приводит к lowercase
+    - Убирает лишние пробелы
+    """
+    # Убираем префиксы для сравнения
+    normalized = tag.lower()
+    for prefix in [
+        "person/",
+        "area/",
+        "project/",
+        "topic/",
+        "people/",
+        "finance/",
+        "business/",
+        "projects/",
+    ]:
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix) :]
+            break
+
+    # Нормализуем разделители
+    normalized = normalized.replace("/", " ").replace("-", " ").replace("_", " ")
+
+    # Убираем лишние пробелы
+    return " ".join(normalized.split())
 
 
 # Маппинг v0 → v1 канон
@@ -119,13 +174,16 @@ def _map_v0_to_v1(tags_v0: set[str]) -> set[str]:
 
 
 def _merge_tags_with_priority(tags_v0: set[str], tags_v1: set[str]) -> list[str]:
-    """Объединяет теги с приоритетом v1 и фильтрацией по префиксам."""
+    """Улучшенное объединение тегов с приоритетом v1 и детальными метриками."""
     # Маппим v0 теги в канон
     mapped_v0 = _map_v0_to_v1(tags_v0)
 
     # Строим индекс для сравнения
     v1_index: dict[str, str] = {}
     v0_index: dict[str, str] = {}
+    duplicates_removed = 0
+    people_tags_preserved = 0
+    v1_priority_wins = 0
 
     # Индексируем v1 теги (приоритет)
     for tag in tags_v1:
@@ -135,27 +193,45 @@ def _merge_tags_with_priority(tags_v0: set[str], tags_v1: set[str]) -> list[str]
     # Индексируем маппированные v0 теги
     for tag in mapped_v0:
         normalized = _normalize_for_comparison(tag)
-        if normalized not in v1_index:  # Только если нет конфликта
+        if normalized in v1_index:
+            # Конфликт: v1 имеет приоритет
+            v1_priority_wins += 1
+            duplicates_removed += 1
+            logger.debug(f"v1 priority: '{tag}' → '{v1_index[normalized]}'")
+        else:
+            # Нет конфликта, добавляем в v0 индекс
             v0_index[normalized] = tag
 
     # Объединяем с фильтрацией
     result_tags: set[str] = set()
 
-    # Добавляем все v1 теги
+    # Добавляем все v1 теги (приоритет)
     result_tags.update(v1_index.values())
 
-    # Добавляем v0 теги (People/* всегда, остальные по уникальности)
-    for normalized, tag in v0_index.items():
+    # Добавляем v0 теги с умной фильтрацией
+    for _normalized, tag in v0_index.items():
         if tag.startswith("People/"):
-            # People теги всегда добавляем
+            # People теги всегда добавляем (даже если есть конфликт)
             result_tags.add(tag)
-        elif normalized not in v1_index:
+            people_tags_preserved += 1
+            logger.debug(f"People tag preserved: '{tag}'")
+        else:
             # Остальные только если нет конфликта
             result_tags.add(tag)
 
+    # Обновляем метрики дедупликации
+    _stats["deduplication"]["v0_tags_total"] += len(tags_v0)
+    _stats["deduplication"]["v1_tags_total"] += len(tags_v1)
+    _stats["deduplication"]["merged_tags_total"] += len(result_tags)
+    _stats["deduplication"]["duplicates_removed"] += duplicates_removed
+    _stats["deduplication"]["people_tags_preserved"] += people_tags_preserved
+    _stats["deduplication"]["v1_priority_wins"] += v1_priority_wins
+
     result = sorted(result_tags)
-    logger.debug(
-        f"Merge: v0={len(tags_v0)}→{len(mapped_v0)}, v1={len(tags_v1)}, result={len(result)}"
+    logger.info(
+        f"Smart dedup: v0={len(tags_v0)}→{len(mapped_v0)}, v1={len(tags_v1)}, "
+        f"result={len(result)}, duplicates_removed={duplicates_removed}, "
+        f"people_preserved={people_tags_preserved}, v1_wins={v1_priority_wins}"
     )
     return result
 
@@ -229,6 +305,8 @@ def tag_text(text: str, *, kind: str = "meeting", meta: dict | None = None) -> l
     if not text or not text.strip():
         return []
 
+    start_time = time.time()
+
     # Валидируем параметры
     mode = _validate_mode(settings.tags_mode)
     kind = _validate_kind(kind)
@@ -236,6 +314,7 @@ def tag_text(text: str, *, kind: str = "meeting", meta: dict | None = None) -> l
     # Обновляем статистику
     _stats["calls_by_mode"][mode] += 1
     _stats["calls_by_kind"][kind] += 1
+    _stats["total_calls"] += 1
 
     # Создаем хеш для кэширования
     text_hash = str(hash((mode, kind, text)))
@@ -244,7 +323,20 @@ def tag_text(text: str, *, kind: str = "meeting", meta: dict | None = None) -> l
     try:
         result = _tag_cached(mode, kind, text_hash, text)
         _stats["cache_hits"] += 1
-        logger.debug(f"Cache hit for {mode}/{kind}, {len(result)} tags")
+
+        # Обновляем статистику топ тегов
+        for tag in result:
+            _stats["top_tags"][tag] = _stats["top_tags"].get(tag, 0) + 1
+
+        # Обновляем производительность
+        response_time = time.time() - start_time
+        _stats["performance"]["total_response_time"] += response_time
+        _stats["performance"]["call_count"] += 1
+        _stats["performance"]["avg_response_time"] = (
+            _stats["performance"]["total_response_time"] / _stats["performance"]["call_count"]
+        )
+
+        logger.debug(f"Cache hit for {mode}/{kind}, {len(result)} tags, {response_time*1000:.1f}ms")
         return result
     except Exception:
         _stats["cache_misses"] += 1
@@ -263,33 +355,125 @@ def tag_text_for_commit(text: str) -> list[str]:
     return tag_text(text, kind="commit")
 
 
+def tag_text_scored(text: str, *, kind: str = "meeting") -> list[tuple[str, float]]:
+    """
+    Возвращает теги с оценками уверенности.
+
+    Args:
+        text: Текст для анализа
+        kind: Тип контента ("meeting" или "commit")
+
+    Returns:
+        Список кортежей (tag, score), отсортированный по убыванию score
+
+    Example:
+        >>> tag_text_scored("Обсудили IFRS аудит дважды")
+        [("Finance/IFRS", 2.4), ("Finance/Audit", 1.0)]
+    """
+    if not text or not text.strip():
+        return []
+
+    # Валидируем параметры
+    mode = _validate_mode(settings.tags_mode)
+    kind = _validate_kind(kind)
+
+    # Обновляем статистику
+    _stats["calls_by_mode"][mode] += 1
+    _stats["calls_by_kind"][kind] += 1
+
+    try:
+        if mode == "v1" or mode == "both":
+            # Используем scored версию v1 тэггера
+            return tagger_v1_scored(text)
+        else:
+            # Для v0 режима возвращаем теги с score=1.0
+            tags_v0 = tagger_v0(text, {"title": "", "attendees": []})
+            mapped_tags = _map_v0_to_v1(set(tags_v0))
+            return [(tag, 1.0) for tag in sorted(mapped_tags)]
+
+    except Exception as e:
+        logger.error(f"Error in tag_text_scored: {e}")
+        return []
+
+
 def merge_meeting_and_commit_tags(meeting_tags: list[str], commit_tags: list[str]) -> list[str]:
-    """Объединяет теги встречи и коммита с фильтрацией по префиксам."""
+    """Улучшенное объединение тегов встречи и коммита с умной дедупликацией и наследованием."""
     if not meeting_tags and not commit_tags:
         return []
 
-    # Разделяем теги по префиксам
-    people_tags: set[str] = set()
-    other_tags: set[str] = set()
+    # Счетчики для метрик
+    inherited_tags = 0
+    duplicates_removed = 0
+    people_inherited = 0
+    business_inherited = 0
+    projects_inherited = 0
+    finance_inherited = 0
+    topic_inherited = 0
 
-    # Обрабатываем теги встречи
-    for tag in meeting_tags:
-        if tag.startswith("People/"):
-            people_tags.add(tag)
-        else:
-            other_tags.add(tag)
+    # Строим индекс для дедупликации
+    result_index: dict[str, str] = {}
 
-    # Обрабатываем теги коммита
+    # 1) Добавляем теги коммита (приоритет)
     for tag in commit_tags:
-        if tag.startswith("People/"):
-            people_tags.add(tag)
-        else:
-            other_tags.add(tag)
+        normalized = _normalize_for_comparison(tag)
+        result_index[normalized] = tag
 
-    # Объединяем и сортируем
-    result = sorted(people_tags | other_tags)
-    logger.debug(
-        f"Merge tags: meeting={len(meeting_tags)}, commit={len(commit_tags)}, result={len(result)}"
+    # 2) Добавляем теги встречи с умной логикой наследования
+    for tag in meeting_tags:
+        normalized = _normalize_for_comparison(tag)
+
+        if normalized in result_index:
+            # Дубликат: коммит имеет приоритет
+            duplicates_removed += 1
+            logger.debug(f"Commit priority: '{tag}' → '{result_index[normalized]}'")
+        else:
+            # Нет дубликата, проверяем логику наследования
+            should_inherit = False
+
+            if tag.startswith("People/"):
+                # People теги: наследуем только если у коммита нет People тегов
+                has_people_in_commit = any(t.startswith("People/") for t in commit_tags)
+                if not has_people_in_commit:
+                    should_inherit = True
+                    people_inherited += 1
+                    logger.debug(f"People inherited: '{tag}'")
+            elif tag.startswith("Business/") or tag.startswith("Projects/"):
+                # Business/Projects теги: всегда наследуем
+                should_inherit = True
+                if tag.startswith("Business/"):
+                    business_inherited += 1
+                else:
+                    projects_inherited += 1
+                logger.debug(f"Business/Projects inherited: '{tag}'")
+            elif tag.startswith("Finance/") or tag.startswith("Topic/"):
+                # Finance/Topic теги: наследуем с приоритетом коммита
+                should_inherit = True
+                if tag.startswith("Finance/"):
+                    finance_inherited += 1
+                else:
+                    topic_inherited += 1
+                logger.debug(f"Finance/Topic inherited: '{tag}'")
+
+            if should_inherit:
+                result_index[normalized] = tag
+                inherited_tags += 1
+
+    # Обновляем метрики наследования
+    _stats["inheritance"]["meeting_tags_total"] += len(meeting_tags)
+    _stats["inheritance"]["commit_tags_total"] += len(commit_tags)
+    _stats["inheritance"]["inherited_tags"] += inherited_tags
+    _stats["inheritance"]["duplicates_removed"] += duplicates_removed
+    _stats["inheritance"]["people_inherited"] += people_inherited
+    _stats["inheritance"]["business_inherited"] += business_inherited
+    _stats["inheritance"]["projects_inherited"] += projects_inherited
+    _stats["inheritance"]["finance_inherited"] += finance_inherited
+    _stats["inheritance"]["topic_inherited"] += topic_inherited
+
+    result = sorted(result_index.values())
+    logger.info(
+        f"Smart inheritance: meeting={len(meeting_tags)}, commit={len(commit_tags)}, "
+        f"result={len(result)}, inherited={inherited_tags}, duplicates_removed={duplicates_removed}, "
+        f"people={people_inherited}, business={business_inherited}, projects={projects_inherited}"
     )
     return result
 
@@ -300,14 +484,17 @@ def reload_tags_rules() -> int:
         # Очищаем кэш
         _tag_cached.cache_clear()
 
-        # Перезагружаем правила v1
-        reload_rules_v1()
+        # Перезагружаем правила v1 (scored)
+        from app.core.tagger_v1_scored import clear_cache as clear_v1_cache
+
+        clear_v1_cache()
+        rules_count = reload_rules()
 
         # Обновляем статистику
         _stats["last_reload"] = time.time()
 
-        logger.info("Tags rules reloaded successfully")
-        return 1
+        logger.info(f"Tags rules reloaded successfully: {rules_count} rules")
+        return rules_count
     except Exception as e:
         logger.error(f"Failed to reload tags rules: {e}")
         return 0
@@ -316,10 +503,36 @@ def reload_tags_rules() -> int:
 def get_tagging_stats() -> dict[str, Any]:
     """Возвращает статистику системы тегирования."""
     try:
-        from app.core.tagger_v1 import get_rules_stats as get_v1_stats
+        from app.core.tagger_v1_scored import get_rules_stats as get_v1_stats
 
         v1_stats = get_v1_stats()
         cache_info = _tag_cached.cache_info()
+
+        # Вычисляем uptime
+        uptime_seconds = time.time() - _stats["start_time"]
+        uptime_hours = uptime_seconds / 3600
+
+        # Топ-10 тегов
+        top_tags = sorted(_stats["top_tags"].items(), key=lambda x: x[1], reverse=True)[:10]
+
+        # Cache hit rate
+        total_cache_calls = cache_info.hits + cache_info.misses
+        hit_rate = (cache_info.hits / total_cache_calls * 100) if total_cache_calls > 0 else 0
+
+        # Метрики дедупликации
+        dedup_stats = _stats["deduplication"]
+        dedup_efficiency = 0.0
+        if dedup_stats["v0_tags_total"] + dedup_stats["v1_tags_total"] > 0:
+            total_input_tags = dedup_stats["v0_tags_total"] + dedup_stats["v1_tags_total"]
+            dedup_efficiency = dedup_stats["duplicates_removed"] / total_input_tags
+
+        # Метрики наследования
+        inheritance_stats = _stats["inheritance"]
+        inheritance_efficiency = 0.0
+        if inheritance_stats["meeting_tags_total"] > 0:
+            inheritance_efficiency = (
+                inheritance_stats["inherited_tags"] / inheritance_stats["meeting_tags_total"]
+            )
 
         return {
             "current_mode": settings.tags_mode,
@@ -331,9 +544,41 @@ def get_tagging_stats() -> dict[str, Any]:
                 "misses": cache_info.misses,
                 "maxsize": cache_info.maxsize,
                 "currsize": cache_info.currsize,
+                "hit_rate_percent": round(hit_rate, 1),
             },
+            "performance": {
+                "uptime_hours": round(uptime_hours, 2),
+                "calls_per_hour": round(_stats["total_calls"] / uptime_hours, 1)
+                if uptime_hours > 0
+                else 0,
+                "avg_response_time_ms": round(_stats["performance"]["avg_response_time"] * 1000, 2),
+            },
+            "top_tags": top_tags,
             "v1_stats": v1_stats,
+            "v1_scored_enabled": True,
+            "tags_min_score": settings.tags_min_score,
             "mapping_rules": len(V0_TO_V1_MAPPING),
+            "deduplication": {
+                "v0_tags_total": dedup_stats["v0_tags_total"],
+                "v1_tags_total": dedup_stats["v1_tags_total"],
+                "merged_tags_total": dedup_stats["merged_tags_total"],
+                "duplicates_removed": dedup_stats["duplicates_removed"],
+                "people_tags_preserved": dedup_stats["people_tags_preserved"],
+                "v1_priority_wins": dedup_stats["v1_priority_wins"],
+                "efficiency_percent": round(dedup_efficiency * 100, 1),
+            },
+            "inheritance": {
+                "meeting_tags_total": inheritance_stats["meeting_tags_total"],
+                "commit_tags_total": inheritance_stats["commit_tags_total"],
+                "inherited_tags": inheritance_stats["inherited_tags"],
+                "duplicates_removed": inheritance_stats["duplicates_removed"],
+                "people_inherited": inheritance_stats["people_inherited"],
+                "business_inherited": inheritance_stats["business_inherited"],
+                "projects_inherited": inheritance_stats["projects_inherited"],
+                "finance_inherited": inheritance_stats["finance_inherited"],
+                "topic_inherited": inheritance_stats["topic_inherited"],
+                "efficiency_percent": round(inheritance_efficiency * 100, 1),
+            },
         }
     except Exception as e:
         logger.error(f"Error getting tagging stats: {e}")

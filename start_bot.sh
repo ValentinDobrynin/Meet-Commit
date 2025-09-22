@@ -60,7 +60,17 @@ fi
 # Устанавливаем PYTHONPATH
 export PYTHONPATH="/Users/vdobrynin/Documents/Meet-Commit:$PYTHONPATH"
 
-echo -e "${GREEN}✅ Starting bot...${NC}"
+# Создаем директорию для логов
+mkdir -p logs
+
+echo -e "${GREEN}✅ Starting bot with logging...${NC}"
+echo "Logs will be saved to:"
+echo "  • logs/bot.log (all logs)"
+echo "  • logs/bot_errors.log (errors only)"
+echo ""
+echo "To view logs in real-time:"
+echo "  tail -f logs/bot.log"
+echo ""
 echo "Press Ctrl+C to stop the bot"
 echo "================================"
 

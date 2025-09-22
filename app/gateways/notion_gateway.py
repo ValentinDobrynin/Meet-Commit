@@ -1,9 +1,12 @@
+import logging
 import os
 from functools import lru_cache
 from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -43,10 +46,19 @@ def _props(payload: dict[str, Any]) -> dict[str, Any]:
     summary_md = (payload.get("summary_md") or "")[:1900]  # ограничим rich_text
     tags: list[str] = payload.get("tags", [])
 
+    # Логируем данные для диагностики
+    logger.debug(f"Building props for meeting: title='{name}', date='{date}'")
+    logger.debug(f"Attendees raw: {attendees} (type: {type(attendees)}, len: {len(attendees)})")
+    logger.debug(f"Tags raw: {tags} (type: {type(tags)}, len: {len(tags)})")
+
+    # Создаем multi_select для attendees
+    attendees_multi_select = [{"name": str(a)} for a in attendees if a and str(a).strip()]
+    logger.debug(f"Attendees multi_select: {attendees_multi_select}")
+
     props = {
         "Name": {"title": [{"text": {"content": name}}]},
         "Date": {"date": {"start": date} if date else None},
-        "Attendees": {"multi_select": [{"name": a} for a in attendees]},
+        "Attendees": {"multi_select": attendees_multi_select},
         "Source": {"rich_text": [{"text": {"content": source}}]},
         "Raw hash": {"rich_text": [{"text": {"content": raw_hash}}]},
         "Summary MD": {"rich_text": [{"text": {"content": summary_md}}]},
@@ -64,16 +76,32 @@ def upsert_meeting(payload: dict[str, Any]) -> str:
     Возвращает URL страницы.
     Ожидаемые поля payload: title, date, attendees, source, raw_hash, summary_md, tags.
     """
-    properties = _props(payload)
-    client = _client()
-    db_id = _settings().notion_db_meetings_id
+    try:
+        properties = _props(payload)
+        client = _client()
+        db_id = _settings().notion_db_meetings_id
 
-    # Всегда создаем новую запись
-    page = client.pages.create(
-        parent={"database_id": db_id},
-        properties=properties,
-    )
-    page_id = page["id"]
+        title = payload.get("title", "Untitled Meeting")
+        tags_count = len(payload.get("tags", []))
+        attendees_count = len(payload.get("attendees", []))
 
-    page = client.pages.retrieve(page_id)
-    return str(page["url"])
+        logger.info(
+            f"Creating meeting page: '{title}' with {tags_count} tags, {attendees_count} attendees"
+        )
+
+        # Всегда создаем новую запись
+        page = client.pages.create(
+            parent={"database_id": db_id},
+            properties=properties,
+        )
+        page_id = page["id"]
+
+        page = client.pages.retrieve(page_id)
+        url = str(page["url"])
+
+        logger.info(f"Meeting page created successfully: {url}")
+        return url
+
+    except Exception as e:
+        logger.error(f"Failed to create meeting page: {e}", exc_info=True)
+        raise

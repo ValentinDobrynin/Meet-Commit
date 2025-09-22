@@ -57,14 +57,15 @@ def test_canonicalize_duplicates(mock_load_people, mock_people_data):
 
 
 @patch("app.core.people_store.load_people")
-def test_canonicalize_unknown_ignored(mock_load_people, mock_people_data):
-    """Тест игнорирования неизвестных имен"""
+def test_canonicalize_unknown_kept(mock_load_people, mock_people_data):
+    """Тест сохранения неизвестных имен (изменена логика)"""
     mock_load_people.return_value = mock_people_data
 
     raw_names = ["Валентин", "Unknown Person", "Daniil", "Another Unknown"]
     result = canonicalize_list(raw_names)
 
-    assert result == ["Valentin", "Daniil"]
+    # Теперь неизвестные имена сохраняются как есть
+    assert result == ["Valentin", "Unknown Person", "Daniil", "Another Unknown"]
 
 
 @patch("app.core.people_store.load_people")
@@ -112,7 +113,8 @@ def test_canonicalize_empty_people_data(mock_load_people):
     raw_names = ["Валентин", "Daniil"]
     result = canonicalize_list(raw_names)
 
-    assert result == []
+    # Теперь неизвестные имена сохраняются как есть
+    assert result == ["Валентин", "Daniil"]
 
 
 @patch("app.core.people_store.load_people")
@@ -123,5 +125,6 @@ def test_canonicalize_mixed_valid_invalid(mock_load_people, mock_people_data):
     raw_names = ["Валентин", "", "Unknown", "Daniil", "  ", "empty", "sasha"]
     result = canonicalize_list(raw_names)
 
-    # empty - это алиас для пустого name_en, должен игнорироваться
-    assert result == ["Valentin", "Daniil", "Sasha Katanov"]
+    # empty - алиас не найден в индексе (пустое name_en игнорируется при построении индекса)
+    # Теперь неизвестные имена сохраняются, пустые строки игнорируются
+    assert result == ["Valentin", "Unknown", "Daniil", "empty", "Sasha Katanov"]
