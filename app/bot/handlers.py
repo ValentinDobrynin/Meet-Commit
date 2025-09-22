@@ -32,7 +32,6 @@ from app.gateways.notion_gateway import upsert_meeting
 from app.gateways.notion_review import (
     enqueue_with_upsert,
     get_by_short_id,
-    list_pending,
     set_status,
     update_fields,
 )
@@ -586,12 +585,14 @@ def _clean_sid(s: str) -> str:
 
 @router.message(F.text.regexp(r"^/review(\s+\d+)?$"))
 async def cmd_review(msg: Message):
-    """Показывает список pending элементов в Review queue."""
+    """Показывает список открытых элементов в Review queue."""
     try:
         parts = (msg.text or "").strip().split()
         limit = int(parts[1]) if len(parts) > 1 else 5
 
-        items = list_pending(limit=limit)
+        # Используем новую логику фильтрации открытых записей
+        from app.core.review_queue import list_open_reviews
+        items = list_open_reviews(limit=limit)
 
         if not items:
             await _send_empty_queue_message_with_menu(msg)
@@ -700,8 +701,17 @@ async def cmd_delete(msg: Message):
             return
 
         try:
+            # Валидируем действие
+            from app.core.review_queue import validate_review_action
+            
+            is_valid, error_msg = validate_review_action(item, "delete")
+            if not is_valid:
+                await msg.answer(f"❌ {error_msg}")
+                return
+            
             set_status(item["page_id"], REVIEW_STATUS_DROPPED)
             await msg.answer(f"✅ [{short_id}] Удалено (dropped).")
+            logger.info(f"Review item {short_id} marked as dropped")
         except Exception as e:
             logger.error(f"Error setting status: {e}")
             await msg.answer(f"❌ Ошибка удаления: {e}")
@@ -769,13 +779,28 @@ async def cmd_confirm(msg: Message):
         created = len(result.get("created", []))
         updated = len(result.get("updated", []))
 
+        # Валидируем действие
+        from app.core.review_queue import validate_review_action
+        
+        is_valid, error_msg = validate_review_action(item, "confirm")
+        if not is_valid:
+            await msg.answer(f"❌ {error_msg}")
+            return
+
         if created or updated:
-            # Помечаем review как resolved
+            # Получаем ID созданного/обновленного коммита
+            commit_ids = result.get("created", []) + result.get("updated", [])
+            commit_id = commit_ids[0] if commit_ids else None
+            
+            # Помечаем review как resolved с привязкой к коммиту
             try:
-                set_status(item["page_id"], REVIEW_STATUS_RESOLVED)
+                set_status(item["page_id"], REVIEW_STATUS_RESOLVED, linked_commit_id=commit_id)
                 await msg.answer(
-                    f"✅ [{short_id}] Confirmed! Создано: {created}, обновлено: {updated}."
+                    f"✅ [{short_id}] Confirmed! Создано: {created}, обновлено: {updated}.\n"
+                    f"🔗 Review запись помечена как resolved"
+                    + (f", привязан коммит {commit_id[:8]}..." if commit_id else "")
                 )
+                logger.info(f"Review item {short_id} confirmed, linked to commit {commit_id[:8] if commit_id else 'none'}")
             except Exception as e:
                 logger.error(f"Error setting resolved status: {e}")
                 await msg.answer(

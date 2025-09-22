@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 from typing import Any
 
 import httpx
@@ -222,25 +223,66 @@ def enqueue(items: list[dict], meeting_page_id: str) -> list[str]:
     return ids
 
 
-def set_status(page_id: str, status: str) -> None:
+def set_status(page_id: str, status: str, *, linked_commit_id: str | None = None) -> None:
     """
     Обновляет статус элемента в очереди ревью.
 
     Args:
         page_id: ID страницы в Notion
-        status: Новый статус (pending, confirmed, rejected)
+        status: Новый статус (pending, resolved, dropped)
+        linked_commit_id: ID связанного коммита (для resolved статуса)
+    """
+    from datetime import datetime
+    
+    client = _create_client()
+
+    try:
+        props: dict[str, Any] = {
+            "Status": {"select": {"name": status}},
+        }
+        
+        # Добавляем Resolved At для закрытых статусов
+        if status in {"resolved", "dropped"}:
+            props["Resolved At"] = {
+                "date": {"start": datetime.now(UTC).isoformat()}
+            }
+        
+        # Добавляем связь с коммитом для resolved
+        if linked_commit_id and status == "resolved":
+            props["Linked Commit"] = {"relation": [{"id": linked_commit_id}]}
+        
+        response = client.patch(
+            f"{NOTION_API}/pages/{page_id}",
+            json={"properties": props},
+        )
+        response.raise_for_status()
+
+    except Exception as e:
+        logger.error(f"Error in set_status: {type(e).__name__}: {e}")
+        raise
+    finally:
+        client.close()
+
+
+def archive(page_id: str) -> None:
+    """
+    Архивирует страницу Review (soft-удаление).
+    
+    Args:
+        page_id: ID страницы в Notion
     """
     client = _create_client()
 
     try:
         response = client.patch(
             f"{NOTION_API}/pages/{page_id}",
-            json={"properties": {"Status": {"select": {"name": status}}}},
+            json={"archived": True},
         )
         response.raise_for_status()
+        logger.info(f"Archived review page: {page_id}")
 
     except Exception as e:
-        print(f"Error in set_status: {type(e).__name__}: {e}")
+        logger.error(f"Error in archive: {type(e).__name__}: {e}")
         raise
     finally:
         client.close()
@@ -302,7 +344,8 @@ def _parse_relation_id(prop: dict | None) -> str | None:
 
 def list_pending(limit: int = 5) -> list[dict]:
     """
-    Возвращает список pending элементов из Review queue.
+    Возвращает список открытых элементов из Review queue.
+    Показывает только элементы со статусом 'pending' или 'needs-review'.
 
     Args:
         limit: Максимальное количество элементов
@@ -310,11 +353,20 @@ def list_pending(limit: int = 5) -> list[dict]:
     Returns:
         Список словарей с данными элементов
     """
+    # Открытые статусы (не resolved/dropped)
+    OPEN_STATUSES = ["pending", "needs-review"]
+    
     client = _create_client()
 
     try:
+        # Фильтруем только открытые статусы
         payload = {
-            "filter": {"property": "Status", "select": {"equals": REVIEW_STATUS_PENDING}},
+            "filter": {
+                "or": [
+                    {"property": "Status", "select": {"equals": status}}
+                    for status in OPEN_STATUSES
+                ]
+            },
             "page_size": limit,
             "sorts": [{"timestamp": "last_edited_time", "direction": "descending"}],
         }

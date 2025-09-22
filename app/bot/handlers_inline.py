@@ -82,7 +82,9 @@ async def cb_main_review(callback: CallbackQuery):
     await callback.answer()
 
     try:
-        items = list_pending(limit=10)  # Показываем больше элементов через кнопки
+        # Используем новую логику фильтрации открытых записей
+        from app.core.review_queue import list_open_reviews
+        items = list_open_reviews(limit=10)  # Показываем больше элементов через кнопки
 
         if not items:
             if callback.message and isinstance(callback.message, Message):
@@ -180,16 +182,30 @@ async def cb_review_confirm(callback: CallbackQuery):
         created = len(result.get("created", []))
         updated = len(result.get("updated", []))
 
+        # Валидируем действие
+        from app.core.review_queue import validate_review_action
+        
+        is_valid, error_msg = validate_review_action(item, "confirm")
+        if not is_valid:
+            await callback.answer(f"❌ {error_msg}", show_alert=True)
+            return
+
         if created or updated:
-            # Помечаем как resolved
-            set_status(item["page_id"], REVIEW_STATUS_RESOLVED)
+            # Получаем ID созданного коммита
+            commit_ids = result.get("created", []) + result.get("updated", [])
+            commit_id = commit_ids[0] if commit_ids else None
+            
+            # Помечаем как resolved с привязкой к коммиту
+            set_status(item["page_id"], REVIEW_STATUS_RESOLVED, linked_commit_id=commit_id)
             await callback.answer("✅ Confirmed!")
             if callback.message and isinstance(callback.message, Message):
                 await callback.message.edit_text(
                     f"✅ <b>[{short_id}] Подтверждено</b>\n"
                     f"📝 {text}\n"
-                    f"📊 Создано: {created}, обновлено: {updated}"
+                    f"📊 Создано: {created}, обновлено: {updated}\n"
+                    f"🔗 Привязан коммит: {commit_id[:8] if commit_id else 'none'}"
                 )
+            logger.info(f"Review item {short_id} confirmed via inline, linked to commit {commit_id[:8] if commit_id else 'none'}")
         else:
             await callback.answer("❌ Не удалось создать коммит", show_alert=True)
 
@@ -259,12 +275,21 @@ async def cb_review_delete(callback: CallbackQuery):
             await callback.answer("❌ Элемент не найден", show_alert=True)
             return
 
+        # Валидируем действие
+        from app.core.review_queue import validate_review_action
+        
+        is_valid, error_msg = validate_review_action(item, "delete")
+        if not is_valid:
+            await callback.answer(f"❌ {error_msg}", show_alert=True)
+            return
+        
         set_status(item["page_id"], REVIEW_STATUS_DROPPED)
         await callback.answer("🗑 Удалено")
         if callback.message and isinstance(callback.message, Message):
             await callback.message.edit_text(
                 f"🗑 <b>[{short_id}] Удалено</b>\n" f"📝 {item.get('text', '')[:90]}"
             )
+        logger.info(f"Review item {short_id} marked as dropped via inline button")
 
     except Exception as e:
         logger.error(f"Error in cb_review_delete: {e}")
@@ -309,7 +334,8 @@ async def cb_review_confirm_all(callback: CallbackQuery):
     await callback.answer()
 
     try:
-        items = list_pending(limit=50)  # Получаем все pending элементы
+        from app.core.review_queue import list_open_reviews
+        items = list_open_reviews(limit=50)  # Получаем все открытые элементы
 
         if not items:
             if callback.message and isinstance(callback.message, Message):

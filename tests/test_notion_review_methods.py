@@ -183,7 +183,9 @@ class TestNotionReviewMethods:
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
         assert "databases" in call_args[0][0]
-        assert call_args[1]["json"]["filter"]["property"] == "Status"
+        # Новый формат фильтра использует "or" для нескольких статусов
+        filter_data = call_args[1]["json"]["filter"]
+        assert "or" in filter_data
         assert call_args[1]["json"]["page_size"] == 5
 
     @patch("app.gateways.notion_review._create_client")

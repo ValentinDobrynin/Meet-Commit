@@ -87,7 +87,7 @@ class TestMainMenuCallbacks:
         assert ".mp3" not in call_args
         assert ".mp4" not in call_args
 
-    @patch("app.bot.handlers_inline.list_pending")
+    @patch("app.bot.handlers_inline.list_open_reviews")
     @pytest.mark.asyncio
     async def test_cb_main_review_success(self, mock_list_pending, mock_callback):
         """Тест кнопки 'Review Commits' с элементами."""
@@ -107,7 +107,7 @@ class TestMainMenuCallbacks:
         mock_callback.answer.assert_called_once()
         assert mock_callback.message.answer.call_count == 2  # Заголовок + элемент
 
-    @patch("app.bot.handlers_inline.list_pending")
+    @patch("app.bot.handlers_inline.list_open_reviews")
     @pytest.mark.asyncio
     async def test_cb_main_review_empty(self, mock_list_pending, mock_callback):
         """Тест кнопки 'Review Commits' без элементов."""
@@ -231,7 +231,7 @@ class TestReviewItemCallbacks:
 
         mock_get_by_short_id.assert_called_once_with("abc123")
         mock_upsert_commits.assert_called_once()
-        mock_set_status.assert_called_once_with("test-page-id-123", "resolved")
+        mock_set_status.assert_called_once_with("test-page-id-123", "resolved", linked_commit_id="new_commit_id")
         mock_callback.answer.assert_called_once_with("✅ Confirmed!")
         mock_callback.message.edit_text.assert_called_once()
 
@@ -245,7 +245,7 @@ class TestReviewItemCallbacks:
 
         mock_callback.answer.assert_called_once_with("❌ Элемент не найден", show_alert=True)
 
-    @patch("app.bot.handlers_inline.list_pending")
+    @patch("app.bot.handlers_inline.list_open_reviews")
     @patch("app.bot.handlers_inline.upsert_commits")
     @patch("app.bot.handlers_inline.set_status")
     @patch("app.bot.handlers_inline.build_title")
@@ -315,7 +315,7 @@ class TestReviewItemCallbacks:
         assert "💡" in second_call_args[0][0]  # Проверяем наличие улучшенного текста
         assert second_call_args[1]["reply_markup"] is not None  # Проверяем наличие клавиатуры
 
-    @patch("app.bot.handlers_inline.list_pending")
+    @patch("app.bot.handlers_inline.list_open_reviews")
     @pytest.mark.asyncio
     async def test_cb_review_confirm_all_empty(self, mock_list_pending, mock_callback):
         """Тест массового подтверждения при пустой очереди."""
