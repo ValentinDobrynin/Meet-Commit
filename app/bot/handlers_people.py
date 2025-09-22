@@ -90,9 +90,21 @@ def _pick_next_candidate(exclude_id: str | None = None) -> tuple[dict[str, Any] 
     return candidates[0], index, len(all_candidates)
 
 
+def _is_admin(message: Message) -> bool:
+    """Проверяет, является ли пользователь администратором."""
+    from app.settings import settings
+
+    user_id = message.from_user.id if message.from_user else None
+    return settings.is_admin(user_id)
+
+
 @router.message(F.text == "/people_miner")
 async def people_miner_start(message: Message, state: FSMContext) -> None:
     """Запускает people miner для обработки кандидатов."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
     await state.set_state(PeopleStates.reviewing)
 
     candidate, index, total = _pick_next_candidate()

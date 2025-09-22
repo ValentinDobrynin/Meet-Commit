@@ -178,7 +178,8 @@ class TestPeopleMinerStart:
         self, mock_message, mock_fsm_context, temp_candidates_file
     ):
         """Тест запуска miner с кандидатами."""
-        await people_miner_start(mock_message, mock_fsm_context)
+        with patch("app.bot.handlers_people._is_admin", return_value=True):
+            await people_miner_start(mock_message, mock_fsm_context)
 
         mock_fsm_context.set_state.assert_called_once()
         mock_message.answer.assert_called_once()
@@ -191,7 +192,10 @@ class TestPeopleMinerStart:
     @pytest.mark.asyncio
     async def test_people_miner_start_no_candidates(self, mock_message, mock_fsm_context):
         """Тест запуска miner без кандидатов."""
-        with patch("app.bot.handlers_people.load_candidates_raw", return_value=[]):
+        with (
+            patch("app.bot.handlers_people.load_candidates_raw", return_value=[]),
+            patch("app.bot.handlers_people._is_admin", return_value=True),
+        ):
             await people_miner_start(mock_message, mock_fsm_context)
 
             mock_fsm_context.set_state.assert_called()

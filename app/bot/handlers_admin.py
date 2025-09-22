@@ -20,9 +20,19 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def _is_admin(message: Message) -> bool:
+    """Проверяет, является ли пользователь администратором."""
+    user_id = message.from_user.id if message.from_user else None
+    return settings.is_admin(user_id)
+
+
 @router.message(F.text == "/reload_tags")
 async def reload_tags_handler(message: Message) -> None:
     """Перезагружает правила тегирования из YAML файла."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
     try:
         rules_count = reload_tags_rules()
         await message.answer(
@@ -41,6 +51,10 @@ async def reload_tags_handler(message: Message) -> None:
 @router.message(F.text == "/tags_stats")
 async def tags_stats_handler(message: Message) -> None:
     """Показывает статистику системы тегирования."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
     try:
         stats = get_tagging_stats()
 
@@ -106,6 +120,10 @@ async def tags_stats_handler(message: Message) -> None:
 @router.message(F.text == "/clear_cache")
 async def clear_cache_handler(message: Message) -> None:
     """Очищает кэш системы тегирования."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
     try:
         clear_cache()
         await message.answer(
@@ -124,6 +142,10 @@ async def clear_cache_handler(message: Message) -> None:
 @router.message(F.text == "/tags_validate")
 async def tags_validate_handler(message: Message) -> None:
     """Валидирует YAML файл правил тегирования."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
     try:
         errors = validate_rules()
 
@@ -161,6 +183,10 @@ async def tags_validate_handler(message: Message) -> None:
 @router.message(F.text.regexp(r"^/retag\s+([0-9a-f\-]{10,})(\s+dry-run)?$", flags=re.I))
 async def retag_handler(message: Message) -> None:
     """Пересчитывает теги для страницы встречи с опциональным dry-run."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
     try:
         if not message.text:
             await message.answer("❌ Неправильный формат команды")
@@ -265,6 +291,10 @@ async def retag_handler(message: Message) -> None:
 @router.message(F.text.regexp(r"^/test_tags\s+.+$"))
 async def test_tags_handler(message: Message) -> None:
     """Тестирует scored тэггер на указанном тексте."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
     try:
         # Извлекаем текст после команды
         text_to_test = (message.text or "").split("/test_tags", 1)[1].strip()
@@ -321,6 +351,10 @@ async def test_tags_handler(message: Message) -> None:
 @router.message(F.text == "/admin_help")
 async def admin_help_handler(message: Message) -> None:
     """Показывает список административных команд."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
     help_text = (
         "🔧 <b>Административные команды</b>\n\n"
         "🏷️ <b>Система тегирования:</b>\n"
@@ -336,10 +370,50 @@ async def admin_help_handler(message: Message) -> None:
         "🧩 <code>/people_miner</code> - Интерактивная верификация кандидатов\n"
         "📊 <code>/people_stats</code> - Статистика людей и кандидатов\n"
         "🔄 <code>/people_reset</code> - Сбросить состояние People Miner\n\n"
-        "❓ <code>/admin_help</code> - Показать эту справку\n\n"
+        "❓ <code>/admin_help</code> - Показать эту справку\n"
+        "🔧 <code>/admin_config</code> - Показать настройки админских прав\n\n"
         "<i>Доступно только администраторам бота</i>"
     )
 
     await message.answer(help_text)
     user_id = message.from_user.id if message.from_user else "unknown"
     logger.info(f"Admin {user_id} requested admin help")
+
+
+@router.message(F.text == "/admin_config")
+async def admin_config_handler(message: Message) -> None:
+    """Показывает настройки админских прав для диагностики."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+        
+    try:
+        from app.settings import get_admin_config_info
+        
+        config = get_admin_config_info()
+        current_user = message.from_user.id if message.from_user else None
+        
+        config_text = (
+            f"🔧 <b>Настройки админских прав</b>\n\n"
+            f"👤 <b>Ваш ID:</b> <code>{current_user}</code>\n"
+            f"👥 <b>Админы:</b> {config['admin_ids']}\n"
+            f"📊 <b>Количество:</b> {config['count']}\n"
+            f"📍 <b>Источник:</b> <code>{config['source']}</code>\n"
+            f"📁 <b>.env файл:</b> {'✅ Существует' if config['env_file_exists'] else '❌ Отсутствует'}\n\n"
+            f"💡 <b>Рекомендуемая настройка:</b>\n"
+            f"<code>{config['recommended_setup']}</code>\n\n"
+            f"📋 <b>Инструкция:</b>\n"
+            f"1. Создайте файл <code>.env</code> в корне проекта\n"
+            f"2. Добавьте строку: <code>APP_ADMIN_USER_IDS={current_user}</code>\n"
+            f"3. Перезапустите бота\n\n"
+            f"🔍 <b>Для получения ID другого пользователя:</b>\n"
+            f"Попросите его написать боту /start и проверьте логи"
+        )
+
+        await message.answer(config_text)
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} requested admin config info")
+
+    except Exception as e:
+        logger.error(f"Failed to get admin config: {e}")
+        await message.answer(f"❌ <b>Ошибка получения настроек</b>\n\n<code>{str(e)}</code>")

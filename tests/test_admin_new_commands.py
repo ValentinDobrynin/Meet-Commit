@@ -7,6 +7,13 @@ import pytest
 from app.bot.handlers_admin import retag_handler, tags_validate_handler
 
 
+@pytest.fixture(autouse=True)
+def mock_is_admin():
+    """Автоматически мокает _is_admin для всех тестов."""
+    with patch("app.bot.handlers_admin._is_admin", return_value=True):
+        yield
+
+
 class TestTagsValidateHandler:
     """Тесты команды /tags_validate."""
 

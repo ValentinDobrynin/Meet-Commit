@@ -23,6 +23,13 @@ def mock_message():
     return message
 
 
+@pytest.fixture(autouse=True)
+def mock_is_admin():
+    """Автоматически мокает _is_admin для всех тестов."""
+    with patch("app.bot.handlers_admin._is_admin", return_value=True):
+        yield
+
+
 class TestReloadTagsHandler:
     """Тесты для команды /reload_tags."""
 
