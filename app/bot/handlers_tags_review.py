@@ -23,6 +23,60 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+async def _show_review_queue_after_tags(callback: CallbackQuery) -> None:
+    """Показывает Review Queue после завершения ревью тегов."""
+    try:
+        from app.bot.formatters import format_review_card
+        from app.bot.handlers_inline import build_review_item_kb
+        from app.core.review_queue import list_open_reviews
+
+        # Проверяем наличие элементов в Review Queue
+        items = list_open_reviews(limit=5)
+
+        if not items:
+            # Если очереди нет, показываем главное меню
+            from app.bot.handlers_inline import build_main_menu_kb
+
+            await callback.message.answer(
+                "🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb()
+            )
+            return
+
+        # Показываем заголовок с кнопкой "Confirm All"
+        confirm_all_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ Confirm All", callback_data="review_confirm_all"),
+                    InlineKeyboardButton(text="🔄 Обновить", callback_data="main_review"),
+                ]
+            ]
+        )
+
+        await callback.message.answer(
+            f"📋 <b>Review Queue ({len(items)} элементов):</b>\n\n"
+            f"💡 <i>Проверьте и подтвердите коммиты:</i>",
+            reply_markup=confirm_all_kb,
+        )
+
+        # Показываем каждый элемент с кнопками
+        for item in items:
+            short_id = item["short_id"]
+            formatted_card = format_review_card(item)
+
+            await callback.message.answer(
+                formatted_card, parse_mode="HTML", reply_markup=build_review_item_kb(short_id)
+            )
+
+        logger.info(f"Showed {len(items)} review items after tags review")
+
+    except Exception as e:
+        logger.error(f"Error showing review queue after tags: {e}")
+        # Fallback к главному меню
+        from app.bot.handlers_inline import build_main_menu_kb
+
+        await callback.message.answer("🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb())
+
+
 @dataclass
 class TagReviewSession:
     """Сессия интерактивного ревью тегов."""
@@ -77,7 +131,7 @@ def _build_tags_keyboard(session: TagReviewSession) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text=f"❌ {i+1}", callback_data=f"tagrev:drop:{session.meeting_id}:{i}"
                 ),
-                InlineKeyboardButton(text=display_tag, callback_data="noop"),
+                InlineKeyboardButton(text=f"🏷️ {display_tag}", callback_data="noop"),
             ]
         )
 
@@ -86,7 +140,7 @@ def _build_tags_keyboard(session: TagReviewSession) -> InlineKeyboardMarkup:
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f"... и еще {len(session.working_tags) - 8} тегов", callback_data="noop"
+                    text=f"📋 ... и еще {len(session.working_tags) - 8} тегов", callback_data="noop"
                 )
             ]
         )
@@ -321,7 +375,7 @@ async def add_tag_handler(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer("❌ Ошибка при добавлении тега", show_alert=True)
 
 
-@router.message(F.text & TagsReviewStates.waiting_custom_tag)
+@router.message(TagsReviewStates.waiting_custom_tag, F.text)
 async def custom_tag_handler(message: Message, state: FSMContext) -> None:
     """Обработчик ввода кастомного тега."""
     try:
@@ -494,6 +548,9 @@ async def _finalize_review(
             f"{len(session.original_tags)} → {len(session.working_tags)} tags"
         )
 
+        # Показываем Review Queue если есть элементы
+        await _show_review_queue_after_tags(callback)
+
     except Exception as e:
         logger.error(f"Error finalizing review for meeting {session.meeting_id}: {e}")
         await callback.answer("❌ Ошибка при сохранении в Notion", show_alert=True)
@@ -541,4 +598,4 @@ def _log_tag_changes(session: TagReviewSession, user_id: int | None) -> None:
 @router.callback_query(F.data == "noop")
 async def noop_handler(callback: CallbackQuery) -> None:
     """Обработчик для неактивных кнопок."""
-    await callback.answer()
+    await callback.answer("ℹ️ Это информационная кнопка", show_alert=False)

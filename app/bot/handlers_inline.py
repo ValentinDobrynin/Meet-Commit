@@ -10,9 +10,9 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.core.commit_normalize import build_key, build_title
 from app.core.constants import REVIEW_STATUS_DROPPED, REVIEW_STATUS_RESOLVED
+from app.core.review_queue import list_open_reviews
 from app.gateways.notion_commits import upsert_commits
 from app.gateways.notion_review import get_by_short_id, list_pending, set_status, update_fields
-from app.core.review_queue import list_open_reviews
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -106,26 +106,16 @@ async def cb_main_review(callback: CallbackQuery):
                 f"📋 <b>Pending review ({len(items)} элементов):</b>", reply_markup=confirm_all_kb
             )
 
+        # Используем новое красивое форматирование
+        from app.bot.formatters import format_review_card
+
         for item in items:
             short_id = item["short_id"]
-            text = (item.get("text") or "")[:90]
-            direction = item.get("direction") or "?"
-            assignees = item.get("assignees") or []
-            due = item.get("due_iso") or "—"
-            confidence = item.get("confidence")
-
-            # Форматируем assignees
-            who = ", ".join(assignees) if assignees else "—"
-            conf_str = f"{confidence:.2f}" if confidence is not None else "—"
-
-            message_text = (
-                f"<b>[{short_id}]</b> {text}\n"
-                f"📍 <i>dir={direction} | who={who} | due={due} | conf={conf_str}</i>"
-            )
+            formatted_card = format_review_card(item)
 
             if callback.message:
                 await callback.message.answer(
-                    message_text, reply_markup=build_review_item_kb(short_id)
+                    formatted_card, parse_mode="HTML", reply_markup=build_review_item_kb(short_id)
                 )
 
     except Exception as e:

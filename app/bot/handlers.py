@@ -26,6 +26,7 @@ from app.core.llm_extract_commits import extract_commits
 from app.core.llm_summarize import run as summarize_run
 from app.core.normalize import run as normalize_run
 from app.core.people_store import canonicalize_list
+from app.core.review_queue import list_open_reviews
 from app.core.tags import tag_text_for_meeting
 from app.gateways.notion_commits import upsert_commits
 from app.gateways.notion_gateway import upsert_meeting
@@ -35,7 +36,6 @@ from app.gateways.notion_review import (
     set_status,
     update_fields,
 )
-from app.core.review_queue import list_open_reviews
 
 logger = logging.getLogger(__name__)
 
@@ -538,17 +538,36 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
             else:
                 commits_report = "⚠️ <b>Коммиты:</b> ошибка обработки, встреча сохранена."
 
-        # 6) Финальный ответ
+        # 6) Финальный ответ с красивым форматированием
+        from app.bot.formatters import format_meeting_card, format_success_card
+
+        # Формируем данные встречи для карточки
+        meeting_data = {
+            "title": filename.replace("_", " ").replace(".txt", ""),
+            "date": meta.get("meeting_date"),
+            "attendees": attendees_en,
+            "tags": tags,
+            "url": notion_url,
+        }
+
+        # Красивая карточка встречи
+        meeting_card = format_meeting_card(meeting_data)
+
+        # Предварительный просмотр
         preview = "\n".join(summary_md.splitlines()[:MAX_PREVIEW_LINES])
+        preview_card = f"📋 <b>Предварительный просмотр:</b>\n\n" f"<pre>{preview}</pre>"
+
         chunks = [
-            f"✅ <b>Готово!</b>\n\n📋 <b>Предварительный просмотр:</b>\n<pre>{preview}</pre>",
+            format_success_card("Встреча обработана успешно!"),
+            meeting_card,
+            preview_card,
             commits_report,
-            f"🔗 <a href='{notion_url}'>Открыть полный результат в Notion</a>",
         ]
         for part in chunks:
-            await msg.answer(part)
+            await msg.answer(part, parse_mode="HTML")
 
         # 7) Запускаем интерактивное ревью тегов (если включено)
+        tags_review_started = False
         try:
             from app.bot.handlers_tags_review import start_tags_review
 
@@ -562,6 +581,7 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
                 message=msg,
                 state=state,
             )
+            tags_review_started = True
 
         except Exception as e:
             logger.warning(f"Failed to start tags review: {e}")
@@ -570,10 +590,13 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
 
             await msg.answer("🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb())
 
+        # Очищаем состояние только если ревью тегов НЕ было запущено
+        if not tags_review_started:
+            await state.clear()
+
     except Exception as e:
         await msg.answer(f"Не удалось обработать. Причина: {type(e).__name__}: {e}")
-    finally:
-        await state.clear()
+        await state.clear()  # При ошибке всегда очищаем состояние
 
 
 # ====== КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ REVIEW QUEUE ======
@@ -598,22 +621,35 @@ async def cmd_review(msg: Message):
             await _send_empty_queue_message_with_menu(msg)
             return
 
-        lines = ["📋 Pending review:"]
+        # Используем новое красивое форматирование
+        # Показываем заголовок с кнопкой "Confirm All"
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+        from app.bot.formatters import format_review_card
+        from app.bot.handlers_inline import build_review_item_kb
+
+        confirm_all_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ Confirm All", callback_data="review_confirm_all"),
+                    InlineKeyboardButton(text="🔄 Обновить", callback_data="main_review"),
+                ]
+            ]
+        )
+
+        await msg.answer(
+            f"📋 <b>Review Queue ({len(items)} элементов):</b>\n\n"
+            f"💡 <i>Проверьте и подтвердите коммиты:</i>",
+            reply_markup=confirm_all_kb,
+        )
+
+        # Показываем каждый элемент с кнопками
         for item in items:
-            assignees_str = ", ".join(item["assignees"]) if item["assignees"] else "—"
-            due_str = item["due_iso"] or "—"
-            conf_str = f"{item['confidence']:.2f}" if item["confidence"] is not None else "—"
-
-            text_preview = (item["text"] or "")[:90]
-            if len(item["text"] or "") > 90:
-                text_preview += "..."
-
-            lines.append(
-                f"[{item['short_id']}] {text_preview}\n"
-                f"    dir={item['direction'] or '?'} | who={assignees_str} | due={due_str} | conf={conf_str}"
+            short_id = item["short_id"]
+            formatted_card = format_review_card(item)
+            await msg.answer(
+                formatted_card, parse_mode="HTML", reply_markup=build_review_item_kb(short_id)
             )
-
-        await msg.answer("\n\n".join(lines))
 
     except Exception as e:
         logger.error(f"Error in cmd_review: {e}")
@@ -795,11 +831,20 @@ async def cmd_confirm(msg: Message):
             # Помечаем review как resolved с привязкой к коммиту
             try:
                 set_status(item["page_id"], REVIEW_STATUS_RESOLVED, linked_commit_id=commit_id)
-                await msg.answer(
-                    f"✅ [{short_id}] Confirmed! Создано: {created}, обновлено: {updated}.\n"
-                    f"🔗 Review запись помечена как resolved"
-                    + (f", привязан коммит {commit_id[:8]}..." if commit_id else "")
+                # Используем красивое форматирование для успеха
+                from app.bot.formatters import format_success_card
+
+                success_details = {
+                    "created": created,
+                    "updated": updated,
+                    "commit_id": commit_id,
+                    "review_status": "resolved",
+                }
+
+                formatted_response = format_success_card(
+                    f"[{short_id}] Коммит подтвержден", success_details
                 )
+                await msg.answer(formatted_response, parse_mode="HTML")
                 logger.info(
                     f"Review item {short_id} confirmed, linked to commit {commit_id[:8] if commit_id else 'none'}"
                 )

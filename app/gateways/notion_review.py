@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC
 from typing import Any
 
 import httpx
 
-from app.core.constants import REVIEW_STATUS_PENDING
+from app.core.constants import (
+    REVIEW_STATUS_PENDING,
+)
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -232,27 +233,42 @@ def set_status(page_id: str, status: str, *, linked_commit_id: str | None = None
         status: Новый статус (pending, resolved, dropped)
         linked_commit_id: ID связанного коммита (для resolved статуса)
     """
-    from datetime import datetime
 
     client = _create_client()
 
     try:
-        props: dict[str, Any] = {
-            "Status": {"select": {"name": status}},
+        # Маппинг новых статусов на старые для обратной совместимости
+        status_mapping = {
+            "resolved": "confirmed",  # resolved → confirmed
+            "dropped": "rejected",  # dropped → rejected
+            "pending": "pending",  # pending остается
         }
 
-        # Добавляем Resolved At для закрытых статусов
-        if status in {"resolved", "dropped"}:
-            props["Resolved At"] = {"date": {"start": datetime.now(UTC).isoformat()}}
+        mapped_status = status_mapping.get(status, status)
 
-        # Добавляем связь с коммитом для resolved
-        if linked_commit_id and status == "resolved":
-            props["Linked Commit"] = {"relation": [{"id": linked_commit_id}]}
+        props: dict[str, Any] = {
+            "Status": {"select": {"name": mapped_status}},
+        }
+
+        # Добавляем Resolved At для закрытых статусов (временно отключено для диагностики)
+        # if status in {"resolved", "dropped"}:
+        #     props["Resolved At"] = {"date": {"start": datetime.now(UTC).isoformat()}}
+
+        # Добавляем связь с коммитом для resolved (временно отключено для диагностики)
+        # if linked_commit_id and status == "resolved":
+        #     props["Linked Commit"] = {"relation": [{"id": linked_commit_id}]}
+
+        logger.debug(f"Updating page {page_id} with props: {props}")
 
         response = client.patch(
             f"{NOTION_API}/pages/{page_id}",
             json={"properties": props},
         )
+
+        if response.status_code != 200:
+            logger.error(f"Set status API Error {response.status_code}: {response.text}")
+            logger.error(f"Props payload: {props}")
+
         response.raise_for_status()
 
     except Exception as e:
@@ -351,7 +367,7 @@ def list_pending(limit: int = 5) -> list[dict]:
     Returns:
         Список словарей с данными элементов
     """
-    # Открытые статусы (не resolved/dropped)
+    # Открытые статусы (не confirmed/rejected)
     OPEN_STATUSES = ["pending", "needs-review"]
 
     client = _create_client()

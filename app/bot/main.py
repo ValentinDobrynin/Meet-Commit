@@ -75,11 +75,12 @@ except KeyError:
     raise ValueError("TELEGRAM_TOKEN not found in environment variables") from None
 
 bot, dp = build_bot(TELEGRAM_TOKEN, MemoryStorage())
-dp.include_router(router)
+# Специализированные роутеры должны быть зарегистрированы ПЕРЕД основным
+dp.include_router(tags_review_router)  # Приоритет для FSM состояний
 dp.include_router(inline_router)
 dp.include_router(admin_router)
 dp.include_router(people_router)
-dp.include_router(tags_review_router)
+dp.include_router(router)  # Основной роутер последним
 
 
 def acquire_lock():

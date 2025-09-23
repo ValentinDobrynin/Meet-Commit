@@ -31,14 +31,22 @@ def _validate_en_name(name: str) -> bool:
 
 def _format_candidate_message(cand: dict[str, Any], index: int, total: int) -> str:
     """Форматирует сообщение с информацией о кандидате."""
-    return (
-        f"🧩 <b>Кандидат {index}/{total}</b>\n\n"
-        f"👤 <b>Имя:</b> {cand.get('alias', 'N/A')}\n"
-        f"📊 <b>Частота:</b> {cand.get('freq', 0)}\n"
-        f"📝 <b>Контекст:</b> {cand.get('context', '—')[:100]}{'...' if len(cand.get('context', '')) > 100 else ''}\n"
-        f"🆔 <b>ID:</b> <code>{cand.get('id', 'N/A')}</code>\n"
-        f"📍 <b>Источник:</b> {cand.get('source', 'unknown')}"
-    )
+    from app.bot.formatters import format_people_candidate_card
+
+    # Используем новое красивое форматирование
+    card = format_people_candidate_card(cand, index, total)
+
+    # Добавляем дополнительную информацию для People Miner
+    context = cand.get("context", "—")
+    if context and context != "—":
+        context_short = context[:100] + ("..." if len(context) > 100 else "")
+        card += f"\n💭 <b>Контекст:</b> <i>{context_short}</i>"
+
+    source = cand.get("source", "unknown")
+    if source != "unknown":
+        card += f"\n📍 <b>Источник:</b> {source}"
+
+    return card
 
 
 def _create_candidate_keyboard(cid: str) -> InlineKeyboardMarkup:
