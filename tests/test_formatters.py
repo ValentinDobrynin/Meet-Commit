@@ -197,8 +197,8 @@ class TestCommitCard:
 
         result = format_commit_card(commit)
 
-        assert "Person1, Person2" in result
-        assert "+2" in result  # Дополнительные исполнители
+        assert "Person1, Person2, Person3" in result  # Tablet по умолчанию показывает 3
+        assert "+1" in result  # Один дополнительный исполнитель
 
 
 class TestReviewCard:
@@ -303,6 +303,103 @@ class TestSpecializedCards:
         assert "7/10" in result
         assert "70%" in result
         assert "🟩" in result  # Progress bar
+
+
+class TestAdaptiveFormatting:
+    """Тесты адаптивного форматирования."""
+
+    def test_adaptive_limits_mobile(self):
+        """Тест адаптивных лимитов для мобильных устройств."""
+        from app.bot.formatters import _get_adaptive_limits
+
+        limits = _get_adaptive_limits("mobile")
+        assert limits.title == 45
+        assert limits.description == 70
+        assert limits.attendees == 3
+        assert limits.tags == 2
+        assert limits.id_length == 6
+
+    def test_adaptive_limits_desktop(self):
+        """Тест адаптивных лимитов для десктопа."""
+        from app.bot.formatters import _get_adaptive_limits
+
+        limits = _get_adaptive_limits("desktop")
+        assert limits.title == 80
+        assert limits.description == 120
+        assert limits.attendees == 6
+        assert limits.tags == 5
+        assert limits.id_length == 12
+
+    def test_meeting_card_mobile_vs_desktop(self):
+        """Тест различий в форматировании встречи для mobile vs desktop."""
+        meeting = {
+            "title": "Очень длинное название встречи которое должно быть обрезано по-разному на разных устройствах",
+            "attendees": [
+                "Person1",
+                "Person2",
+                "Person3",
+                "Person4",
+                "Person5",
+                "Person6",
+                "Person7",
+            ],
+            "tags": [
+                "Finance/IFRS",
+                "Business/Market",
+                "Topic/Planning",
+                "Projects/Mobile",
+                "People/John",
+            ],
+        }
+
+        mobile_result = format_meeting_card(meeting, device_type="mobile")
+        desktop_result = format_meeting_card(meeting, device_type="desktop")
+
+        # Mobile должен быть короче
+        assert len(mobile_result) < len(desktop_result)
+
+        # Mobile показывает меньше участников
+        assert "Person4" not in mobile_result  # Mobile показывает только 3
+        assert "Person4" in desktop_result  # Desktop показывает 6
+
+        # Mobile показывает меньше тегов
+        assert "+3" in mobile_result  # Mobile показывает 2 тега + 3 дополнительных
+        assert "Planning" in desktop_result  # Desktop показывает больше тегов
+
+    def test_commit_card_adaptive_text_truncation(self):
+        """Тест адаптивного обрезания текста коммитов."""
+        commit = {
+            "text": "Очень длинный текст коммита который должен обрезаться по-разному в зависимости от типа устройства и его ограничений по ширине экрана",
+            "assignees": ["Person1"],
+            "short_id": "very-long-commit-id-123456789",
+        }
+
+        mobile_result = format_commit_card(commit, device_type="mobile")
+        desktop_result = format_commit_card(commit, device_type="desktop")
+
+        # Проверяем разную длину ID
+        assert "very-l" in mobile_result  # Mobile показывает 6 символов
+        assert "very-long-co" in desktop_result  # Desktop показывает 12 символов
+
+    def test_adaptive_demo_function(self):
+        """Тест функции демонстрации адаптивного форматирования."""
+        from app.bot.formatters import format_adaptive_demo
+
+        sample_data = {
+            "title": "Test meeting",
+            "attendees": ["Person1", "Person2"],
+            "tags": ["Finance/IFRS"],
+        }
+
+        demo_results = format_adaptive_demo(sample_data)
+
+        assert "mobile" in demo_results
+        assert "tablet" in demo_results
+        assert "desktop" in demo_results
+
+        # Каждый результат должен содержать информацию об устройстве
+        assert "Mobile (45x70)" in demo_results["mobile"]
+        assert "Desktop (80x120)" in demo_results["desktop"]
 
 
 class TestIntegration:

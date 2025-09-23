@@ -376,6 +376,9 @@ async def admin_help_handler(message: Message) -> None:
         "🧩 <code>/people_miner</code> - Интерактивная верификация кандидатов\n"
         "📊 <code>/people_stats</code> - Статистика людей и кандидатов\n"
         "🔄 <code>/people_reset</code> - Сбросить состояние People Miner\n\n"
+        "🎨 <b>Форматирование:</b>\n"
+        "📱 <code>/adaptive_demo</code> - Демонстрация адаптивного форматирования\n"
+        "📱 <code>/adaptive_demo mobile</code> - Показать форматирование для мобильного\n\n"
         "❓ <code>/admin_help</code> - Показать эту справку\n"
         "🔧 <code>/admin_config</code> - Показать настройки админских прав\n\n"
         "<i>Доступно только администраторам бота</i>"
@@ -614,3 +617,106 @@ async def sync_status_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Error in sync_status_handler: {e}")
         await message.answer(f"❌ <b>Ошибка получения статуса</b>\n\n<code>{str(e)}</code>")
+
+
+@router.message(F.text.regexp(r"^/adaptive_demo(\s+(mobile|tablet|desktop))?$"))
+async def adaptive_demo_handler(message: Message) -> None:
+    """Демонстрирует адаптивное форматирование для разных устройств."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        # Парсим device_type из команды
+        parts = (message.text or "").strip().split()
+        device_type = parts[1] if len(parts) > 1 else None
+
+        from app.bot.formatters import (
+            DEVICE_LIMITS,
+            format_adaptive_demo,
+            format_commit_card,
+            format_meeting_card,
+        )
+
+        # Пример данных
+        sample_meeting = {
+            "title": "Финансовое планирование и бюджетирование на Q4 2025 с обсуждением IFRS стандартов",
+            "date": "2025-09-23",
+            "attendees": [
+                "Valya Dobrynin",
+                "Nodari Kezua",
+                "Sergey Lompa",
+                "Vlad Sklyanov",
+                "Serezha Ustinenko",
+                "Ivan Petrov",
+            ],
+            "tags": [
+                "Finance/IFRS",
+                "Finance/Budget",
+                "Business/Market",
+                "Topic/Planning",
+                "People/Valya Dobrynin",
+            ],
+            "url": "https://notion.so/sample-meeting-12345",
+        }
+
+        sample_commit = {
+            "text": "Подготовить детальный отчет по продажам и маркетинговым активностям за Q3 с анализом конверсии",
+            "status": "open",
+            "direction": "theirs",
+            "assignees": ["Daniil Petrov", "Maria Sidorova"],
+            "due_iso": "2025-10-15",
+            "confidence": 0.85,
+            "short_id": "abc123def456ghi789",
+        }
+
+        if device_type:
+            # Показываем для конкретного устройства
+            limits = DEVICE_LIMITS.get(device_type, DEVICE_LIMITS["tablet"])
+
+            await message.answer(
+                f"📱 <b>Адаптивное форматирование для {device_type.title()}</b>\n\n"
+                f"🎯 <b>Лимиты:</b> title={limits.title}, desc={limits.description}, "
+                f"attendees={limits.attendees}, tags={limits.tags}, id={limits.id_length}",
+                parse_mode="HTML",
+            )
+
+            # Встреча
+            meeting_formatted = format_meeting_card(sample_meeting, device_type=device_type)
+            await message.answer(f"📅 <b>Встреча:</b>\n\n{meeting_formatted}", parse_mode="HTML")
+
+            # Коммит
+            commit_formatted = format_commit_card(sample_commit, device_type=device_type)
+            await message.answer(f"📝 <b>Коммит:</b>\n\n{commit_formatted}", parse_mode="HTML")
+        else:
+            # Показываем сравнение всех устройств
+            await message.answer(
+                "🎨 <b>Демонстрация адаптивного форматирования</b>\n\n"
+                "📱 Сравнение для разных устройств:",
+                parse_mode="HTML",
+            )
+
+            # Встречи для всех устройств
+            demo_results = format_adaptive_demo(sample_meeting)
+            for _device, formatted in demo_results.items():
+                await message.answer(formatted, parse_mode="HTML")
+
+            # Лимиты
+            limits_text = "🎯 <b>Адаптивные лимиты:</b>\n\n"
+            for device, limits in DEVICE_LIMITS.items():
+                limits_text += (
+                    f"📱 <b>{device.title()}:</b> "
+                    f"title={limits.title}, desc={limits.description}, "
+                    f"attendees={limits.attendees}, tags={limits.tags}\n"
+                )
+
+            await message.answer(limits_text, parse_mode="HTML")
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} used adaptive demo with device_type={device_type}")
+
+    except Exception as e:
+        logger.error(f"Error in adaptive_demo_handler: {e}")
+        await message.answer(
+            f"❌ <b>Ошибка демонстрации</b>\n\n<code>{str(e)}</code>", parse_mode="HTML"
+        )
