@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # Tagger v1 scoring settings
     tags_min_score: float = 0.8
 
+    # User identification for queries
+    me_name_en: str = Field(default="Valya Dobrynin", description="English name for 'mine' queries")
+
     # Tagger v1 settings (kept for compatibility)
     tagger_v1_enabled: bool = True
     tagger_v1_rules_file: str = "data/tag_rules.yaml"

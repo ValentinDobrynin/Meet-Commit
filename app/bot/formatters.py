@@ -323,12 +323,21 @@ def format_commit_card(
     # Форматируем confidence
     conf_str = f"{float(confidence):.0%}" if confidence is not None else "—"
 
+    # Форматируем статус
+    status_text = {
+        "open": "🟢 Активно",
+        "done": "✅ Выполнено",
+        "dropped": "❌ Отменено",
+        "cancelled": "❌ Отменено",
+    }.get(str(status).lower(), f"❓ {str(status).title()}")
+
     # Собираем карточку
     card = (
         f"{status_emoji} <b>{text_escaped}</b>\n"
         f"{direction_emoji} <b>Исполнитель:</b> {who}\n"
+        f"📊 <b>Статус:</b> {status_text}\n"
         f"{urgency_emoji} <b>Срок:</b> {due_formatted}\n"
-        f"📊 <b>Уверенность:</b> {conf_str}"
+        f"📈 <b>Уверенность:</b> {conf_str}"
     )
 
     if short_id:
