@@ -12,6 +12,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from app.core.metrics import snapshot as get_metrics_snapshot
 from app.core.tagger_v1_scored import validate_rules
 from app.core.tags import clear_cache, get_tagging_stats, reload_tags_rules, tag_text_scored
 from app.settings import settings
@@ -116,6 +117,84 @@ async def tags_stats_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Failed to get tags stats: {e}")
         await message.answer("❌ <b>Ошибка получения статистики</b>\n\n" f"<code>{str(e)}</code>")
+
+
+@router.message(F.text == "/metrics")
+async def metrics_handler(message: Message) -> None:
+    """Показывает общие метрики производительности системы."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        snapshot = get_metrics_snapshot()
+
+        # Функция для форматирования латентности
+        def format_latency(name: str) -> str:
+            lat = snapshot.latency.get(name, {})
+            if lat.get("count", 0) == 0:
+                return f"{name}: нет данных"
+            return (
+                f"{name}: n={lat.get('count', 0)} "
+                f"avg={lat.get('avg', 0):.1f}ms "
+                f"p95={lat.get('p95', 0):.1f}ms "
+                f"p99={lat.get('p99', 0):.1f}ms"
+            )
+
+        # Функция для форматирования токенов LLM
+        def format_llm_tokens(name: str) -> str:
+            tokens = snapshot.llm_tokens.get(name, {})
+            if tokens.get("calls", 0) == 0:
+                return f"{name}: нет вызовов"
+            return (
+                f"{name}: {tokens.get('calls', 0)} вызовов, "
+                f"{tokens.get('total_tokens', 0):,} токенов "
+                f"(prompt: {tokens.get('prompt_tokens', 0):,}, "
+                f"completion: {tokens.get('completion_tokens', 0):,})"
+            )
+
+        metrics_text = (
+            f"📊 <b>Метрики производительности</b>\n\n"
+            f"🤖 <b>LLM операции:</b>\n"
+            f"📝 {format_latency('llm.summarize')}\n"
+            f"📋 {format_latency('llm.extract_commits')}\n\n"
+            f"💰 <b>LLM токены:</b>\n"
+            f"📝 {format_llm_tokens('llm.summarize')}\n"
+            f"📋 {format_llm_tokens('llm.extract_commits')}\n\n"
+            f"📁 <b>Обработка файлов:</b>\n"
+            f"📄 {format_latency('ingest.extract')}\n\n"
+            f"🗄️ <b>Notion API:</b>\n"
+            f"📅 {format_latency('notion.create_meeting')}\n"
+            f"📝 {format_latency('notion.upsert_commits')}\n"
+            f"🔍 {format_latency('notion.query_commits')}\n"
+            f"✅ {format_latency('notion.update_commit_status')}\n\n"
+            f"🏷️ <b>Тегирование:</b>\n"
+            f"🎯 {format_latency('tagging.tag_text')}\n\n"
+        )
+
+        # Добавляем ошибки если есть
+        if snapshot.errors:
+            metrics_text += "❌ <b>Ошибки:</b>\n"
+            for error_name, count in list(snapshot.errors.items())[:5]:  # Топ-5 ошибок
+                metrics_text += f"   • {error_name}: {count}\n"
+        else:
+            metrics_text += "✅ <b>Ошибок нет</b>\n"
+
+        # Добавляем счетчики успешных операций
+        success_counters = {k: v for k, v in snapshot.counters.items() if k.endswith(".success")}
+        if success_counters:
+            metrics_text += "\n🎯 <b>Успешные операции:</b>\n"
+            for counter_name, count in list(success_counters.items())[:5]:
+                clean_name = counter_name.replace(".success", "")
+                metrics_text += f"   • {clean_name}: {count}\n"
+
+        await message.answer(metrics_text, parse_mode="HTML")
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} requested metrics")
+
+    except Exception as e:
+        logger.error(f"Failed to get metrics: {e}")
+        await message.answer("❌ <b>Ошибка получения метрик</b>\n\n" f"<code>{str(e)}</code>")
 
 
 @router.message(F.text == "/clear_cache")
@@ -358,9 +437,11 @@ async def admin_help_handler(message: Message) -> None:
 
     help_text = (
         "🔧 <b>Административные команды</b>\n\n"
+        "📊 <b>Мониторинг:</b>\n"
+        "📈 <code>/metrics</code> - Общие метрики производительности системы\n"
+        "🏷️ <code>/tags_stats</code> - Детальная статистика системы тегирования\n\n"
         "🏷️ <b>Система тегирования:</b>\n"
         "♻️ <code>/reload_tags</code> - Перезагрузить правила тегирования из YAML\n"
-        "📊 <code>/tags_stats</code> - Детальная статистика системы тегирования\n"
         "✅ <code>/tags_validate</code> - Валидировать YAML файл правил\n"
         "🧹 <code>/clear_cache</code> - Очистить LRU кэш результатов\n"
         "🧪 <code>/test_tags &lt;текст&gt;</code> - Протестировать scored тэггер\n\n"

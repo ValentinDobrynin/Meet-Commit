@@ -22,6 +22,7 @@ import time
 from functools import lru_cache
 from typing import Any
 
+from app.core.metrics import MetricNames, integrate_with_tags_stats, timer
 from app.core.tagger import run as tagger_v0
 from app.core.tagger_v1_scored import reload_rules
 from app.core.tagger_v1_scored import tag_text as tagger_v1
@@ -305,44 +306,50 @@ def tag_text(text: str, *, kind: str = "meeting", meta: dict | None = None) -> l
     if not text or not text.strip():
         return []
 
-    start_time = time.time()
+    with timer(MetricNames.TAGGING_TAG_TEXT):
+        start_time = time.time()
 
-    # Валидируем параметры
-    mode = _validate_mode(settings.tags_mode)
-    kind = _validate_kind(kind)
+        # Валидируем параметры
+        mode = _validate_mode(settings.tags_mode)
+        kind = _validate_kind(kind)
 
-    # Обновляем статистику
-    _stats["calls_by_mode"][mode] += 1
-    _stats["calls_by_kind"][kind] += 1
-    _stats["total_calls"] += 1
+        # Обновляем статистику
+        _stats["calls_by_mode"][mode] += 1
+        _stats["calls_by_kind"][kind] += 1
+        _stats["total_calls"] += 1
 
-    # Создаем хеш для кэширования
-    text_hash = str(hash((mode, kind, text)))
+        # Создаем хеш для кэширования
+        text_hash = str(hash((mode, kind, text)))
 
-    # Проверяем кэш
-    try:
-        result = _tag_cached(mode, kind, text_hash, text)
-        _stats["cache_hits"] += 1
+        # Проверяем кэш
+        try:
+            result = _tag_cached(mode, kind, text_hash, text)
+            _stats["cache_hits"] += 1
 
-        # Обновляем статистику топ тегов
-        for tag in result:
-            _stats["top_tags"][tag] = _stats["top_tags"].get(tag, 0) + 1
+            # Обновляем статистику топ тегов
+            for tag in result:
+                _stats["top_tags"][tag] = _stats["top_tags"].get(tag, 0) + 1
 
-        # Обновляем производительность
-        response_time = time.time() - start_time
-        _stats["performance"]["total_response_time"] += response_time
-        _stats["performance"]["call_count"] += 1
-        _stats["performance"]["avg_response_time"] = (
-            _stats["performance"]["total_response_time"] / _stats["performance"]["call_count"]
-        )
+            # Обновляем производительность
+            response_time = time.time() - start_time
+            _stats["performance"]["total_response_time"] += response_time
+            _stats["performance"]["call_count"] += 1
+            _stats["performance"]["avg_response_time"] = (
+                _stats["performance"]["total_response_time"] / _stats["performance"]["call_count"]
+            )
 
-        logger.debug(f"Cache hit for {mode}/{kind}, {len(result)} tags, {response_time*1000:.1f}ms")
-        return result
-    except Exception:
-        _stats["cache_misses"] += 1
-        logger.debug(f"Cache miss for {mode}/{kind}")
-        # Fallback без кэша
-        return []
+            # Интегрируем с новой системой метрик
+            integrate_with_tags_stats(_stats)
+
+            logger.debug(
+                f"Cache hit for {mode}/{kind}, {len(result)} tags, {response_time*1000:.1f}ms"
+            )
+            return result
+        except Exception:
+            _stats["cache_misses"] += 1
+            logger.debug(f"Cache miss for {mode}/{kind}")
+            # Fallback без кэша
+            return []
 
 
 def tag_text_for_meeting(text: str, meta: dict[str, Any]) -> list[str]:

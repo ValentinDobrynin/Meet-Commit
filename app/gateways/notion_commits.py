@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from app.core.metrics import MetricNames, timer, track_batch_operation
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -163,54 +164,66 @@ def upsert_commits(meeting_page_id: str, commits: list[dict]) -> dict[str, list[
         logger.info("No commits to process")
         return {"created": [], "updated": []}
 
-    created, updated = [], []
-    client = _create_client()
+    with timer(MetricNames.NOTION_UPSERT_COMMITS):
+        created, updated = [], []
+        client = _create_client()
 
-    try:
-        logger.info(f"Processing {len(commits)} commits for meeting {meeting_page_id}")
+        try:
+            logger.info(f"Processing {len(commits)} commits for meeting {meeting_page_id}")
 
-        for item in commits:
-            # Валидация обязательных полей
-            if not item.get("key") or not item.get("title") or not item.get("text"):
-                logger.warning(
-                    f"Skipping commit with missing required fields: {item.get('title', 'Unknown')}"
-                )
-                continue
-
-            # Поиск существующего коммита по ключу (дедупликация)
-            page_id = _query_by_key(client, item["key"])
-            props = _props_commit(item, meeting_page_id)
-
-            if page_id:
-                # Обновляем существующую страницу
-                response = client.patch(f"{NOTION_API}/pages/{page_id}", json={"properties": props})
-                response.raise_for_status()
-                updated.append(page_id)
-                logger.debug(f"Updated existing commit: {item.get('title', 'Unknown')}")
-            else:
-                # Создаем новую страницу
-                response = client.post(
-                    f"{NOTION_API}/pages",
-                    json={"parent": {"database_id": settings.commits_db_id}, "properties": props},
-                )
-                logger.debug(f"Notion create commits http={response.status_code}")
-                if response.status_code != 200:
-                    logger.error(f"Notion API Error {response.status_code}: {response.text}")
-                    logger.error(
-                        f"Payload was: {{'parent': {{'database_id': '{settings.commits_db_id}'}}, 'properties': {props}}}"
+            for item in commits:
+                # Валидация обязательных полей
+                if not item.get("key") or not item.get("title") or not item.get("text"):
+                    logger.warning(
+                        f"Skipping commit with missing required fields: {item.get('title', 'Unknown')}"
                     )
-                response.raise_for_status()
-                created.append(response.json()["id"])
-                logger.debug(f"Created new commit: {item.get('title', 'Unknown')}")
+                    continue
 
-    except Exception as e:
-        logger.error(f"Error in upsert_commits: {type(e).__name__}: {e}")
-        raise
-    finally:
-        client.close()
+                # Поиск существующего коммита по ключу (дедупликация)
+                page_id = _query_by_key(client, item["key"])
+                props = _props_commit(item, meeting_page_id)
 
-    logger.info(f"Commits processing completed: {len(created)} created, {len(updated)} updated")
-    return {"created": created, "updated": updated}
+                if page_id:
+                    # Обновляем существующую страницу
+                    response = client.patch(
+                        f"{NOTION_API}/pages/{page_id}", json={"properties": props}
+                    )
+                    response.raise_for_status()
+                    updated.append(page_id)
+                    logger.debug(f"Updated existing commit: {item.get('title', 'Unknown')}")
+                else:
+                    # Создаем новую страницу
+                    response = client.post(
+                        f"{NOTION_API}/pages",
+                        json={
+                            "parent": {"database_id": settings.commits_db_id},
+                            "properties": props,
+                        },
+                    )
+                    logger.debug(f"Notion create commits http={response.status_code}")
+                    if response.status_code != 200:
+                        logger.error(f"Notion API Error {response.status_code}: {response.text}")
+                        logger.error(
+                            f"Payload was: {{'parent': {{'database_id': '{settings.commits_db_id}'}}, 'properties': {props}}}"
+                        )
+                    response.raise_for_status()
+                    created.append(response.json()["id"])
+                    logger.debug(f"Created new commit: {item.get('title', 'Unknown')}")
+
+            logger.info(
+                f"Commits processing completed: {len(created)} created, {len(updated)} updated"
+            )
+
+            # Отслеживаем батчевую операцию
+            track_batch_operation("commits_upsert", len(commits), 0)  # duration_ms будет в timer
+
+        except Exception as e:
+            logger.error(f"Error in upsert_commits: {type(e).__name__}: {e}")
+            raise
+        finally:
+            client.close()
+
+        return {"created": created, "updated": updated}
 
 
 # ====== QUERY FUNCTIONS FOR TG COMMANDS ======
@@ -234,41 +247,42 @@ def _query_commits(
     Returns:
         Ответ Notion API с results
     """
-    client = _create_client()
+    with timer(MetricNames.NOTION_QUERY_COMMITS):
+        client = _create_client()
 
-    try:
-        payload: dict[str, Any] = {
-            "page_size": page_size,
-        }
+        try:
+            payload: dict[str, Any] = {
+                "page_size": page_size,
+            }
 
-        if filter_:
-            payload["filter"] = filter_
+            if filter_:
+                payload["filter"] = filter_
 
-        if sorts:
-            payload["sorts"] = sorts
-        else:
-            # По умолчанию сортируем по дедлайну (без Created time - может не существовать)
-            payload["sorts"] = [{"property": "Due", "direction": "ascending"}]
+            if sorts:
+                payload["sorts"] = sorts
+            else:
+                # По умолчанию сортируем по дедлайну (без Created time - может не существовать)
+                payload["sorts"] = [{"property": "Due", "direction": "ascending"}]
 
-        logger.info(f"Querying commits with payload: {payload}")  # Временно INFO для отладки
+            logger.info(f"Querying commits with payload: {payload}")  # Временно INFO для отладки
 
-        response = client.post(
-            f"{NOTION_API}/databases/{settings.commits_db_id}/query", json=payload
-        )
-        response.raise_for_status()
+            response = client.post(
+                f"{NOTION_API}/databases/{settings.commits_db_id}/query", json=payload
+            )
+            response.raise_for_status()
 
-        result = response.json()
-        logger.info(
-            f"Query result: {len(result.get('results', []))} items found"
-        )  # Временно INFO для отладки
+            result = response.json()
+            logger.info(
+                f"Query result: {len(result.get('results', []))} items found"
+            )  # Временно INFO для отладки
 
-        return result  # type: ignore[no-any-return]
+            return result  # type: ignore[no-any-return]
 
-    except Exception as e:
-        logger.error(f"Error querying commits: {e}")
-        raise
-    finally:
-        client.close()
+        except Exception as e:
+            logger.error(f"Error querying commits: {e}")
+            raise
+        finally:
+            client.close()
 
 
 def _map_commit_page(page: dict[str, Any]) -> dict[str, Any]:
@@ -554,29 +568,30 @@ def update_commit_status(commit_id: str, status: str) -> bool:
     Returns:
         True если обновление прошло успешно
     """
-    client = _create_client()
+    with timer(MetricNames.NOTION_UPDATE_COMMIT_STATUS):
+        client = _create_client()
 
-    try:
-        url = f"{NOTION_API}/pages/{commit_id}"
+        try:
+            url = f"{NOTION_API}/pages/{commit_id}"
 
-        # Подготавливаем payload для обновления статуса
-        payload: dict[str, Any] = {"properties": {"Status": {"select": {"name": status}}}}
+            # Подготавливаем payload для обновления статуса
+            payload: dict[str, Any] = {"properties": {"Status": {"select": {"name": status}}}}
 
-        logger.info(f"Updating commit {commit_id} status to '{status}'")
+            logger.info(f"Updating commit {commit_id} status to '{status}'")
 
-        response = client.patch(url, json=payload)
+            response = client.patch(url, json=payload)
 
-        if response.status_code == 200:
-            logger.info(f"Successfully updated commit {commit_id} status to '{status}'")
-            return True
-        else:
-            logger.error(
-                f"Failed to update commit status: {response.status_code} - {response.text}"
-            )
+            if response.status_code == 200:
+                logger.info(f"Successfully updated commit {commit_id} status to '{status}'")
+                return True
+            else:
+                logger.error(
+                    f"Failed to update commit status: {response.status_code} - {response.text}"
+                )
+                return False
+
+        except Exception as e:
+            logger.error(f"Error updating commit status: {e}")
             return False
-
-    except Exception as e:
-        logger.error(f"Error updating commit status: {e}")
-        return False
-    finally:
-        client.close()
+        finally:
+            client.close()

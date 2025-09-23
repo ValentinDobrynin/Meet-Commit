@@ -6,6 +6,8 @@ from typing import Any
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
+from app.core.metrics import MetricNames, timer
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,32 +78,33 @@ def upsert_meeting(payload: dict[str, Any]) -> str:
     Возвращает URL страницы.
     Ожидаемые поля payload: title, date, attendees, source, raw_hash, summary_md, tags.
     """
-    try:
-        properties = _props(payload)
-        client = _client()
-        db_id = _settings().notion_db_meetings_id
+    with timer(MetricNames.NOTION_CREATE_MEETING):
+        try:
+            properties = _props(payload)
+            client = _client()
+            db_id = _settings().notion_db_meetings_id
 
-        title = payload.get("title", "Untitled Meeting")
-        tags_count = len(payload.get("tags", []))
-        attendees_count = len(payload.get("attendees", []))
+            title = payload.get("title", "Untitled Meeting")
+            tags_count = len(payload.get("tags", []))
+            attendees_count = len(payload.get("attendees", []))
 
-        logger.info(
-            f"Creating meeting page: '{title}' with {tags_count} tags, {attendees_count} attendees"
-        )
+            logger.info(
+                f"Creating meeting page: '{title}' with {tags_count} tags, {attendees_count} attendees"
+            )
 
-        # Всегда создаем новую запись
-        page = client.pages.create(
-            parent={"database_id": db_id},
-            properties=properties,
-        )
-        page_id = page["id"]
+            # Всегда создаем новую запись
+            page = client.pages.create(
+                parent={"database_id": db_id},
+                properties=properties,
+            )
+            page_id = page["id"]
 
-        page = client.pages.retrieve(page_id)
-        url = str(page["url"])
+            page = client.pages.retrieve(page_id)
+            url = str(page["url"])
 
-        logger.info(f"Meeting page created successfully: {url}")
-        return url
+            logger.info(f"Meeting page created successfully: {url}")
+            return url
 
-    except Exception as e:
-        logger.error(f"Failed to create meeting page: {e}", exc_info=True)
-        raise
+        except Exception as e:
+            logger.error(f"Failed to create meeting page: {e}", exc_info=True)
+            raise

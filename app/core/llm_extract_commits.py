@@ -10,6 +10,7 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from app.core.metrics import MetricNames, timer, track_llm_tokens
 from app.settings import settings
 
 # ==== Данные, которые возвращаем дальше по пайплайну ====
@@ -184,36 +185,61 @@ def extract_commits(
     Возвращает список извлечённых коммитов (v0).
     Нормализация исполнителей и дедлайнов — на этапе 2.2.
     """
-    mdl = model or "gpt-4o-mini"
-    messages = _build_messages(text, attendees_en, meeting_date_iso)
+    with timer(MetricNames.LLM_EXTRACT_COMMITS):
+        mdl = model or "gpt-4o-mini"
+        messages = _build_messages(text, attendees_en, meeting_date_iso)
 
-    client = _create_client()
-    try:
-        # попытка №1 с response_format
-        resp = client.chat.completions.create(
-            model=mdl,
-            messages=messages,
-            temperature=temperature,
-            response_format={"type": "json_object"},
-        )
-        raw = (resp.choices[0].message.content or "").strip()
-
-        # если по какой-то причине пришёл не JSON — повторим без response_format
-        if not raw or not raw.startswith("{"):
-            print("First attempt returned non-JSON, retrying without response_format...")
+        client = _create_client()
+        try:
+            # попытка №1 с response_format
             resp = client.chat.completions.create(
                 model=mdl,
                 messages=messages,
                 temperature=temperature,
+                response_format={"type": "json_object"},
             )
             raw = (resp.choices[0].message.content or "").strip()
 
-        data = _extract_json(raw)
-        commits = _to_models(data)
-        return commits
+            # Отслеживаем токены от первой попытки
+            if resp.usage and hasattr(resp.usage, "prompt_tokens"):
+                try:
+                    track_llm_tokens(
+                        MetricNames.LLM_EXTRACT_COMMITS,
+                        int(resp.usage.prompt_tokens),
+                        int(resp.usage.completion_tokens),
+                        int(resp.usage.total_tokens),
+                    )
+                except (TypeError, ValueError):
+                    pass  # Игнорируем ошибки в тестах с Mock объектами
 
-    except Exception as e:
-        print(f"Error in extract_commits: {type(e).__name__}: {e}")
-        raise
-    finally:
-        client.close()
+            # если по какой-то причине пришёл не JSON — повторим без response_format
+            if not raw or not raw.startswith("{"):
+                print("First attempt returned non-JSON, retrying without response_format...")
+                resp = client.chat.completions.create(
+                    model=mdl,
+                    messages=messages,
+                    temperature=temperature,
+                )
+                raw = (resp.choices[0].message.content or "").strip()
+
+                # Отслеживаем токены от второй попытки
+                if resp.usage and hasattr(resp.usage, "prompt_tokens"):
+                    try:
+                        track_llm_tokens(
+                            f"{MetricNames.LLM_EXTRACT_COMMITS}.retry",
+                            int(resp.usage.prompt_tokens),
+                            int(resp.usage.completion_tokens),
+                            int(resp.usage.total_tokens),
+                        )
+                    except (TypeError, ValueError):
+                        pass  # Игнорируем ошибки в тестах с Mock объектами
+
+            data = _extract_json(raw)
+            commits = _to_models(data)
+            return commits
+
+        except Exception as e:
+            print(f"Error in extract_commits: {type(e).__name__}: {e}")
+            raise
+        finally:
+            client.close()

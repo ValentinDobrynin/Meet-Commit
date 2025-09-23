@@ -11,6 +11,8 @@ import webvtt
 from docx import Document
 from pdfminer.high_level import extract_text as pdf_extract
 
+from app.core.metrics import MetricNames, wrap_timer
+
 DATE_PATTERNS = [
     r"(?P<d>\d{1,2})[._-](?P<m>\d{1,2})[._-](?P<y>\d{4})",
     r"(?P<y>\d{4})[._-](?P<m>\d{1,2})[._-](?P<d>\d{1,2})",
@@ -318,6 +320,7 @@ def _read_text(raw_bytes: bytes | None, text: str | None, filename: str) -> str:
     return (raw_bytes or b"").decode("utf-8", errors="ignore")
 
 
+@wrap_timer(MetricNames.INGEST_EXTRACT)
 def run(raw_bytes: bytes | None, text: str | None, filename: str) -> dict:
     content = _read_text(raw_bytes, text, filename)
     clean = content.strip()
