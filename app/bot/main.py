@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from .handlers import router
 from .handlers_admin import router as admin_router
+from .handlers_direct_commit import router as direct_commit_router
 from .handlers_inline import router as inline_router
 from .handlers_people import router as people_router
 from .handlers_tags_review import router as tags_review_router
@@ -77,6 +78,7 @@ except KeyError:
 bot, dp = build_bot(TELEGRAM_TOKEN, MemoryStorage())
 # Специализированные роутеры должны быть зарегистрированы ПЕРЕД основным
 dp.include_router(tags_review_router)  # Приоритет для FSM состояний
+dp.include_router(direct_commit_router)  # Прямые коммиты с FSM
 dp.include_router(inline_router)
 dp.include_router(admin_router)
 dp.include_router(people_router)

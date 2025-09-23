@@ -12,7 +12,7 @@ from app.core.commit_normalize import build_key, build_title
 from app.core.constants import REVIEW_STATUS_DROPPED, REVIEW_STATUS_RESOLVED
 from app.core.review_queue import list_open_reviews
 from app.gateways.notion_commits import upsert_commits
-from app.gateways.notion_review import get_by_short_id, list_pending, set_status, update_fields
+from app.gateways.notion_review import get_by_short_id, set_status, update_fields
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -393,7 +393,7 @@ async def cb_review_confirm_all(callback: CallbackQuery):
                 await callback.message.answer(result_msg)
 
                 # Проверяем, пуста ли очередь после обработки
-                remaining_items = list_pending(limit=1)
+                remaining_items = list_open_reviews(limit=1)
                 if not remaining_items and isinstance(callback.message, Message):
                     await _send_empty_queue_message(callback.message)
             else:

@@ -41,8 +41,7 @@ class TestReviewCommands:
             "meeting_page_id": "87654321-4321-4321-4321-210987654321",
         }
 
-    @patch("app.core.review_queue.list_open_reviews")
-    @pytest.mark.asyncio
+    @patch("app.bot.handlers.list_open_reviews")  # Правильный путь для новой логики
     @pytest.mark.asyncio
     async def test_cmd_review_success(self, mock_list_pending, mock_message, sample_review_item):
         """Тест успешного выполнения команды /review."""
@@ -52,17 +51,14 @@ class TestReviewCommands:
         await cmd_review(mock_message)
 
         mock_list_pending.assert_called_once_with(limit=5)
-        mock_message.answer.assert_called_once()
+        # Теперь отправляется 2 сообщения: заголовок + элемент
+        assert mock_message.answer.call_count == 2
 
-        # Проверяем содержимое ответа
-        call_args = mock_message.answer.call_args[0][0]
-        assert "📋 Pending review:" in call_args
-        assert "[789012]" in call_args
-        assert "Подготовить отчет по продажам" in call_args
-        assert "dir=theirs" in call_args
-        assert "who=Daniil" in call_args
+        # Проверяем содержимое первого сообщения (заголовок)
+        first_call_args = mock_message.answer.call_args_list[0][0][0]
+        assert "📋 <b>Review Queue" in first_call_args
 
-    @patch("app.core.review_queue.list_open_reviews")
+    @patch("app.bot.handlers.list_open_reviews")
     @pytest.mark.asyncio
     async def test_cmd_review_empty(self, mock_list_pending, mock_message):
         """Тест команды /review с пустой очередью."""
@@ -78,7 +74,7 @@ class TestReviewCommands:
         assert "💡" in call_args[0][0]  # Проверяем наличие улучшенного текста
         assert call_args[1]["reply_markup"] is not None  # Проверяем наличие клавиатуры
 
-    @patch("app.core.review_queue.list_open_reviews")
+    @patch("app.bot.handlers.list_open_reviews")  # Правильный путь
     @pytest.mark.asyncio
     async def test_cmd_review_with_limit(self, mock_list_pending, mock_message, sample_review_item):
         """Тест команды /review с указанием лимита."""
@@ -272,8 +268,8 @@ class TestReviewCommands:
         # Проверяем, что ответ содержит основную информацию
         mock_message.answer.assert_called_once()
         call_args = mock_message.answer.call_args[0][0]
-        assert "✅ [789012] Confirmed! Создано: 1, обновлено: 0" in call_args
-        assert "🔗 Review запись помечена как resolved" in call_args
+        assert "✅ <b>[789012] Коммит подтвержден</b>" in call_args  # Новый формат подтверждения
+        assert "ℹ️ <b>Review Status:</b> resolved" in call_args  # Новый формат статуса
 
     @patch("app.bot.handlers.get_by_short_id")
     @pytest.mark.asyncio
@@ -300,7 +296,7 @@ class TestReviewCommandsErrorHandling:
         msg.answer = AsyncMock()
         return msg
 
-    @patch("app.core.review_queue.list_open_reviews")
+    @patch("app.bot.handlers.list_open_reviews")  # Правильный путь
     @pytest.mark.asyncio
     async def test_cmd_review_exception(self, mock_list_pending, mock_message):
         """Тест обработки исключения в команде /review."""

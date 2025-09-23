@@ -143,11 +143,11 @@ class TestUtilityFunctions:
 
         message = _format_candidate_message(candidate, 1, 3)
 
-        assert "Кандидат 1/3" in message
+        assert "📊 <b>1/3</b>" in message  # Новый формат счетчика
         assert "Иван Петров" in message
-        assert "5" in message and "Частота" in message
+        assert "⭐ <b>Встречается:</b> 5 раз" in message  # Новый формат частоты
         assert "Встреча с Иваном" in message
-        assert "abc12345" in message
+        # ID не отображается в новом формате, убираем проверку
 
     def test_pick_next_candidate(self, temp_candidates_file):
         """Тест выбора следующего кандидата."""
@@ -187,7 +187,7 @@ class TestPeopleMinerStart:
         # Проверяем, что сообщение содержит информацию о кандидате
         call_args = mock_message.answer.call_args
         assert "Иван Петров" in call_args[0][0]
-        assert "5" in call_args[0][0] and "Частота" in call_args[0][0]
+        assert "⭐ <b>Встречается:</b> 5 раз" in call_args[0][0]  # Новый формат частоты
 
     @pytest.mark.asyncio
     async def test_people_miner_start_no_candidates(self, mock_message, mock_fsm_context):

@@ -87,7 +87,7 @@ class TestMainMenuCallbacks:
         assert ".mp3" not in call_args
         assert ".mp4" not in call_args
 
-    @patch("app.core.review_queue.list_open_reviews")
+    @patch("app.bot.handlers_inline.list_open_reviews")
     @pytest.mark.asyncio
     async def test_cb_main_review_success(self, mock_list_pending, mock_callback):
         """Тест кнопки 'Review Commits' с элементами."""
@@ -105,9 +105,9 @@ class TestMainMenuCallbacks:
         await cb_main_review(mock_callback)
 
         mock_callback.answer.assert_called_once()
-        assert mock_callback.message.answer.call_count == 2  # Заголовок + элемент
+        assert mock_callback.message.answer.call_count == 2  # Заголовок + 1 элемент (как и было)
 
-    @patch("app.core.review_queue.list_open_reviews")
+    @patch("app.bot.handlers_inline.list_open_reviews")
     @pytest.mark.asyncio
     async def test_cb_main_review_empty(self, mock_list_pending, mock_callback):
         """Тест кнопки 'Review Commits' без элементов."""
@@ -247,7 +247,7 @@ class TestReviewItemCallbacks:
 
         mock_callback.answer.assert_called_once_with("❌ Элемент не найден", show_alert=True)
 
-    @patch("app.core.review_queue.list_open_reviews")
+    @patch("app.bot.handlers_inline.list_open_reviews")
     @patch("app.bot.handlers_inline.upsert_commits")
     @patch("app.bot.handlers_inline.set_status")
     @patch("app.bot.handlers_inline.build_title")
@@ -297,9 +297,9 @@ class TestReviewItemCallbacks:
         await cb_review_confirm_all(mock_callback)
 
         # Проверяем вызовы
-        # Теперь list_pending вызывается дважды: сначала для получения элементов, потом для проверки пустой очереди
+        # list_open_reviews вызывается дважды: сначала для получения элементов, потом для проверки пустой очереди
         assert mock_list_pending.call_count == 2
-        mock_list_pending.assert_any_call(limit=50)
+        mock_list_pending.assert_any_call(limit=50)  # Получение всех элементов
         mock_list_pending.assert_any_call(limit=1)  # Проверка оставшихся элементов
         assert mock_upsert_commits.call_count == 2  # По одному для каждого элемента
         assert mock_set_status.call_count == 2  # Помечаем оба как resolved
@@ -317,7 +317,7 @@ class TestReviewItemCallbacks:
         assert "💡" in second_call_args[0][0]  # Проверяем наличие улучшенного текста
         assert second_call_args[1]["reply_markup"] is not None  # Проверяем наличие клавиатуры
 
-    @patch("app.core.review_queue.list_open_reviews")
+    @patch("app.bot.handlers_inline.list_open_reviews")
     @pytest.mark.asyncio
     async def test_cb_review_confirm_all_empty(self, mock_list_pending, mock_callback):
         """Тест массового подтверждения при пустой очереди."""
