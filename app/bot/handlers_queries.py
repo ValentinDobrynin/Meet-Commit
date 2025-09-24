@@ -17,6 +17,7 @@ from app.bot.keyboards import (
     build_query_help_keyboard,
 )
 from app.gateways.notion_commits import (
+    query_commits_by_assignee,
     query_commits_by_tag,
     query_commits_due_today,
     query_commits_due_within,
@@ -271,6 +272,52 @@ async def cmd_by_tag(message: Message) -> None:
         await message.answer(error_message, parse_mode="HTML")
 
 
+@router.message(Command("by_assignee"))
+async def cmd_by_assignee(message: Message) -> None:
+    """Показывает коммиты по конкретному исполнителю."""
+    user_id = message.from_user.id if message.from_user else 0
+
+    if not _check_rate_limit(user_id):
+        await message.answer("⏳ Подождите немного перед следующим запросом")
+        return
+
+    # Парсим аргумент имени исполнителя
+    parts = (message.text or "").strip().split(maxsplit=1)
+    if len(parts) < 2:
+        help_text = (
+            "👤 <b>Поиск по исполнителю</b>\n\n"
+            "📝 <b>Использование:</b>\n"
+            "<code>/by_assignee Valya</code>\n"
+            "<code>/by_assignee John Doe</code>\n"
+            "<code>/by_assignee Nodari</code>\n\n"
+            "💡 <i>Поддерживаются все алиасы из people.json</i>\n"
+            "🔍 <i>Показывает все коммиты (активные + выполненные)</i>"
+        )
+        await message.answer(help_text, parse_mode="HTML")
+        return
+
+    assignee_name = parts[1].strip()
+
+    try:
+        commits = query_commits_by_assignee(assignee_name, limit=10)
+        await _send_commits_list(
+            message,
+            commits,
+            "by_assignee",
+            f"Задачи исполнителя '{assignee_name}'",
+            extra_params=assignee_name,
+        )
+
+        logger.info(
+            f"User {user_id} queried commits by assignee '{assignee_name}': {len(commits)} found"
+        )
+
+    except Exception as e:
+        logger.error(f"Error in cmd_by_assignee: {e}")
+        error_message = format_error_card("Ошибка поиска по исполнителю", str(e))
+        await message.answer(error_message, parse_mode="HTML")
+
+
 @router.message(Command("queries_help"))
 async def cmd_queries_help(message: Message) -> None:
     """Показывает справку по командам запросов."""
@@ -283,11 +330,16 @@ async def cmd_queries_help(message: Message) -> None:
         "• <code>/theirs</code> - чужие задачи (direction=theirs)\n"
         "• <code>/due</code> - дедлайны ближайшей недели\n"
         "• <code>/today</code> - что горит сегодня\n"
-        "• <code>/by_tag &lt;тег&gt;</code> - фильтр по тегу\n\n"
+        "• <code>/by_tag &lt;тег&gt;</code> - фильтр по тегу\n"
+        "• <code>/by_assignee &lt;имя&gt;</code> - задачи конкретного исполнителя\n\n"
         "🏷️ <b>Примеры поиска по тегам:</b>\n"
         "• <code>/by_tag Finance/IFRS</code>\n"
         "• <code>/by_tag Topic/Meeting</code>\n"
         "• <code>/by_tag People/John</code>\n\n"
+        "👤 <b>Примеры поиска по исполнителю:</b>\n"
+        "• <code>/by_assignee Valya</code>\n"
+        "• <code>/by_assignee John Doe</code>\n"
+        "• <code>/by_assignee Nodari</code>\n\n"
         "⚡ <b>Особенности:</b>\n"
         "• Результаты обновляются в реальном времени\n"
         "• Поддерживается частичное совпадение тегов\n"
@@ -355,6 +407,9 @@ async def handle_commits_pagination(callback: CallbackQuery) -> None:
         elif query_type == "by_tag" and extra_params:
             commits = query_commits_by_tag(extra_params, limit=10)
             query_description = f"Коммиты с тегом '{extra_params}'"
+        elif query_type == "by_assignee" and extra_params:
+            commits = query_commits_by_assignee(extra_params, limit=10)
+            query_description = f"Задачи исполнителя '{extra_params}'"
         elif query_type == "help_tag":
             help_text = (
                 "🏷️ <b>Поиск по тегу</b>\n\n"

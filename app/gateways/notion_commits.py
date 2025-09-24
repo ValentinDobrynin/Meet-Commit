@@ -557,6 +557,39 @@ def query_commits_by_tag(tag: str, limit: int = PAGE_SIZE) -> list[dict[str, Any
         return []
 
 
+def query_commits_by_assignee(assignee_name: str, limit: int = PAGE_SIZE) -> list[dict[str, Any]]:
+    """
+    Получает коммиты по конкретному исполнителю.
+
+    Args:
+        assignee_name: Имя исполнителя для поиска
+        limit: Максимальное количество результатов
+
+    Returns:
+        Список коммитов назначенных указанному исполнителю
+    """
+    try:
+        # Получаем все алиасы для указанного имени
+        search_variants = _get_person_aliases(assignee_name)
+
+        # Создаем фильтр для поиска по исполнителю (все статусы)
+        filter_ = {
+            "or": [
+                {"property": "Assignee", "multi_select": {"contains": variant}}
+                for variant in search_variants
+            ]
+        }
+
+        sorts = [{"property": "Due", "direction": "ascending"}]
+
+        response = _query_commits(filter_=filter_, sorts=sorts, page_size=limit)
+        return [_map_commit_page(page) for page in response.get("results", [])]
+
+    except Exception as e:
+        logger.error(f"Error in query_commits_by_assignee: {e}")
+        return []
+
+
 def update_commit_status(commit_id: str, status: str) -> bool:
     """
     Обновляет статус коммита в Notion.

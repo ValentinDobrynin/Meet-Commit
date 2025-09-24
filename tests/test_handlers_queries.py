@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, Message, User
 from app.bot.handlers_queries import (
     _check_rate_limit,
     _send_commits_list,
+    cmd_by_assignee,
     cmd_by_tag,
     cmd_commits,
     cmd_due,
@@ -208,6 +209,33 @@ class TestCommitCommands:
         call_args = mock_message.answer.call_args[0][0]
         assert "Поиск по тегу" in call_args
         assert "Использование" in call_args
+
+    @patch("app.bot.handlers_queries.query_commits_by_assignee")
+    @pytest.mark.asyncio
+    async def test_cmd_by_assignee_success(self, mock_query, mock_message, sample_commits):
+        """Тест успешного поиска по исполнителю."""
+        mock_query.return_value = sample_commits
+
+        with patch("app.bot.handlers_queries._check_rate_limit", return_value=True):
+            # Симулируем сообщение с именем исполнителя
+            mock_message.text = "/by_assignee Valya"
+            await cmd_by_assignee(mock_message)
+
+        mock_query.assert_called_once_with("Valya", limit=10)
+        assert mock_message.answer.call_count >= 2  # Заголовок + карточки
+
+    @pytest.mark.asyncio
+    async def test_cmd_by_assignee_no_argument(self, mock_message):
+        """Тест команды /by_assignee без аргумента."""
+        with patch("app.bot.handlers_queries._check_rate_limit", return_value=True):
+            mock_message.text = "/by_assignee"
+            await cmd_by_assignee(mock_message)
+
+        # Должна показать справку
+        mock_message.answer.assert_called_once()
+        call_args = mock_message.answer.call_args[0][0]
+        assert "Поиск по исполнителю" in call_args
+        assert "/by_assignee Valya" in call_args
 
     @pytest.mark.asyncio
     async def test_rate_limit_blocked(self, mock_message):

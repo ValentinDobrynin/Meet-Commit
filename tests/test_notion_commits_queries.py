@@ -10,6 +10,7 @@ import pytest
 from app.gateways.notion_commits import (
     _map_commit_page,
     _query_commits,
+    query_commits_by_assignee,
     query_commits_by_tag,
     query_commits_due_today,
     query_commits_due_within,
@@ -385,6 +386,7 @@ class TestIntegration:
             (query_commits_due_within, {"days": 7}),
             (query_commits_due_today, {}),
             (query_commits_by_tag, {"tag": "Finance/Test"}),
+            (query_commits_by_assignee, {"assignee_name": "Test User"}),
         ]
 
         for func, kwargs in functions_to_test:
@@ -412,6 +414,7 @@ class TestIntegration:
             query_commits_due_within,
             query_commits_due_today,
             lambda: query_commits_by_tag("test"),
+            lambda: query_commits_by_assignee("test"),
         ]
 
         for func in functions_to_test:
