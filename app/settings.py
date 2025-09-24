@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # User identification for queries
     me_name_en: str = Field(default="Valya Dobrynin", description="English name for 'mine' queries")
 
+    # Agendas database
+    agendas_db_id: str = Field(
+        default="278344c5676680258ffcedce15881de2", description="Notion database ID for agendas"
+    )
+
     # Tagger v1 settings (kept for compatibility)
     tagger_v1_enabled: bool = True
     tagger_v1_rules_file: str = "data/tag_rules.yaml"
