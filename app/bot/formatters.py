@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
 # Эмодзи для статусов
@@ -694,3 +694,84 @@ if __name__ == "__main__":
             )
     else:
         print("Usage: python -m app.bot.formatters demo")
+
+
+def format_agenda_card(bundle, device_type: str = "mobile") -> str:
+    """
+    Форматирование повестки в виде карточки для Telegram.
+
+    Args:
+        bundle: AgendaBundle с данными повестки
+        device_type: Тип устройства для адаптивного форматирования
+
+    Returns:
+        Отформатированная карточка повестки в HTML
+    """
+    limits = DEVICE_LIMITS[device_type]
+
+    # Заголовок повестки
+    context_emoji = {"Meeting": "🏢", "Person": "👤", "Tag": "🏷️"}.get(bundle.context_type, "📋")
+    title = f"{context_emoji} Повестка — {bundle.context_type}"
+
+    if bundle.context_type == "Person":
+        person_name = bundle.context_key.replace("People/", "")
+        title = f"👤 Повестка — {person_name}"
+    elif bundle.context_type == "Tag":
+        title = f"🏷️ Повестка — {bundle.context_key}"
+    elif bundle.context_type == "Meeting":
+        title = "🏢 Повестка — Встреча"
+
+    title = _truncate_text(title, limits.title)
+
+    # Статистика
+    stats = []
+    if bundle.debts_mine:
+        stats.append(f"👤 Мои: {len(bundle.debts_mine)}")
+    if bundle.debts_theirs:
+        stats.append(f"👥 Их: {len(bundle.debts_theirs)}")
+    if bundle.review_open:
+        stats.append(f"❓ Вопросы: {len(bundle.review_open)}")
+    if bundle.recent_done:
+        stats.append(f"✅ Выполнено: {len(bundle.recent_done)}")
+
+    stats_line = " | ".join(stats) if stats else "📋 Пусто"
+
+    # Теги
+    tags_line = ""
+    if bundle.tags:
+        tags_display = _format_tags_list(bundle.tags, limits.tags)
+        tags_line = f"\n🏷️ {tags_display}"
+
+    # Участники
+    people_line = ""
+    if bundle.people:
+        people_display = _format_tags_list(bundle.people, limits.attendees)
+        people_line = f"\n👥 {people_display}"
+
+    # Краткое содержимое (первые строки)
+    content_preview = ""
+    if bundle.summary_md:
+        # Убираем HTML теги для превью
+        preview_text = bundle.summary_md.replace("<b>", "").replace("</b>", "")
+        preview_text = preview_text.replace("<i>", "").replace("</i>", "")
+        preview_lines = preview_text.split("\n")[:3]  # Первые 3 строки
+        content_preview = f"\n\n{chr(10).join(preview_lines)}"
+        if len(preview_lines) >= 3:
+            content_preview += "\n..."
+
+    # Дата генерации
+    from datetime import datetime
+
+    now = datetime.now(UTC).strftime("%d.%m %H:%M UTC")
+
+    # Собираем карточку
+    card = (
+        f"<b>{title}</b>\n"
+        f"📊 {stats_line}"
+        f"{tags_line}"
+        f"{people_line}"
+        f"{content_preview}\n\n"
+        f"🕒 Сгенерировано: {now}"
+    )
+
+    return card
