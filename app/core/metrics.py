@@ -259,6 +259,10 @@ class MetricNames:
     BATCH_COMMITS_PROCESS = "batch.commits_process"
     BATCH_TAGS_APPLY = "batch.tags_apply"
 
+    # Дедупликация встреч
+    MEETINGS_DEDUP_HIT = "meetings.dedup.hit"
+    MEETINGS_DEDUP_MISS = "meetings.dedup.miss"
+
 
 # Экспорт основных функций
 __all__ = [

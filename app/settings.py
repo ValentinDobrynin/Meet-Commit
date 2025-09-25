@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     # Agendas database
     agendas_db_id: str | None = Field(default=None, alias="AGENDAS_DB_ID")
 
+    # Meetings deduplication
+    enable_meetings_dedup: bool = Field(
+        default=True,
+        alias="APP_ENABLE_MEETINGS_DEDUP",
+        description="Enable meetings deduplication by content hash",
+    )
+
     # Tagger v1 settings (kept for compatibility)
     tagger_v1_enabled: bool = True
     tagger_v1_rules_file: str = "data/tag_rules.yaml"

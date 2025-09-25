@@ -6,7 +6,8 @@ from typing import Any
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
-from app.core.metrics import MetricNames, timer
+from app.core.metrics import MetricNames, inc, timer
+from app.settings import settings as app_settings
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def _props(payload: dict[str, Any]) -> dict[str, Any]:
     date = payload.get("date")  # ISO YYYY-MM-DD
     attendees: list[str] = payload.get("attendees", [])
     source = payload.get("source", "telegram")
-    raw_hash = payload["raw_hash"]
+    raw_hash = payload.get("raw_hash", "")
     summary_md = (payload.get("summary_md") or "")[:1900]  # ограничим rich_text
     tags: list[str] = payload.get("tags", [])
 
@@ -88,8 +89,8 @@ def upsert_meeting(payload: dict[str, Any]) -> str:
             tags_count = len(payload.get("tags", []))
             attendees_count = len(payload.get("attendees", []))
 
-            # Проверяем, существует ли встреча с таким raw_hash
-            if raw_hash:
+            # Проверяем, существует ли встреча с таким raw_hash (если дедупликация включена)
+            if raw_hash and app_settings.enable_meetings_dedup:
                 try:
                     response = client.databases.query(
                         database_id=db_id,
@@ -99,9 +100,50 @@ def upsert_meeting(payload: dict[str, Any]) -> str:
 
                     if response.get("results"):
                         existing_page = response["results"][0]
+                        existing_page_id = existing_page["id"]
                         existing_url = existing_page.get("url", "")
+
+                        # Обновляем существующую встречу с объединением данных
                         logger.info(
-                            f"Found existing meeting with hash '{raw_hash}': {existing_url}"
+                            f"♻️ Updating existing meeting with hash '{raw_hash}': {existing_url}"
+                        )
+                        inc(MetricNames.MEETINGS_DEDUP_HIT)
+
+                        # Получаем текущие данные для объединения
+                        current_props = existing_page.get("properties", {})
+
+                        # Объединяем теги
+                        current_tags = [
+                            tag["name"]
+                            for tag in current_props.get("Tags", {}).get("multi_select", [])
+                        ]
+                        new_tags = payload.get("tags", [])
+                        merged_tags = sorted(set(current_tags) | set(new_tags))
+
+                        # Объединяем участников
+                        current_attendees = [
+                            att["name"]
+                            for att in current_props.get("Attendees", {}).get("multi_select", [])
+                        ]
+                        new_attendees = payload.get("attendees", [])
+                        merged_attendees = sorted(set(current_attendees) | set(new_attendees))
+
+                        # Подготавливаем обновленные properties
+                        update_props = _props(payload)
+                        if merged_tags:
+                            update_props["Tags"] = {
+                                "multi_select": [{"name": tag} for tag in merged_tags]
+                            }
+                        if merged_attendees:
+                            update_props["Attendees"] = {
+                                "multi_select": [{"name": att} for att in merged_attendees]
+                            }
+
+                        # Обновляем страницу
+                        client.pages.update(page_id=existing_page_id, properties=update_props)
+
+                        logger.info(
+                            f"Updated meeting: tags {len(current_tags)}→{len(merged_tags)}, attendees {len(current_attendees)}→{len(merged_attendees)}"
                         )
                         return str(existing_url)
 
@@ -112,6 +154,7 @@ def upsert_meeting(payload: dict[str, Any]) -> str:
             logger.info(
                 f"Creating meeting page: '{title}' with {tags_count} tags, {attendees_count} attendees"
             )
+            inc(MetricNames.MEETINGS_DEDUP_MISS)
 
             # Создаем новую запись
             properties = _props(payload)

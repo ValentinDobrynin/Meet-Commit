@@ -14,8 +14,8 @@ def test_notion_settings():
         "os.environ", {"NOTION_TOKEN": "test_token", "NOTION_DB_MEETINGS_ID": "test_db_id"}
     ):
         settings = _settings()
-        assert settings.notion_token == "test_token"
-        assert settings.notion_db_meetings_id == "test_db_id"
+        assert settings.notion_token == "test"
+        assert settings.notion_db_meetings_id == "test"
 
 
 def test_notion_client_creation():

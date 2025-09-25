@@ -168,6 +168,9 @@ async def metrics_handler(message: Message) -> None:
             f"📝 {format_latency('notion.upsert_commits')}\n"
             f"🔍 {format_latency('notion.query_commits')}\n"
             f"✅ {format_latency('notion.update_commit_status')}\n\n"
+            f"♻️ <b>Дедупликация встреч:</b>\n"
+            f"🎯 Попадания: {snapshot.counters.get('meetings.dedup.hit', 0)}\n"
+            f"🆕 Промахи: {snapshot.counters.get('meetings.dedup.miss', 0)}\n\n"
             f"🏷️ <b>Тегирование:</b>\n"
             f"🎯 {format_latency('tagging.tag_text')}\n\n"
         )
@@ -195,6 +198,106 @@ async def metrics_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Failed to get metrics: {e}")
         await message.answer("❌ <b>Ошибка получения метрик</b>\n\n" f"<code>{str(e)}</code>")
+
+
+@router.message(F.text == "/dedup_status")
+async def dedup_status_handler(message: Message) -> None:
+    """Показывает статус дедупликации встреч."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        from app.core.metrics import snapshot
+        from app.settings import settings
+
+        snap = snapshot()
+
+        # Статистика дедупликации
+        hits = snap.counters.get("meetings.dedup.hit", 0)
+        misses = snap.counters.get("meetings.dedup.miss", 0)
+        total = hits + misses
+        hit_rate = (hits / total * 100) if total > 0 else 0
+
+        status_text = (
+            f"♻️ <b>Статус дедупликации встреч</b>\n\n"
+            f"🎛️ <b>Статус:</b> {'🟢 Включена' if settings.enable_meetings_dedup else '🔴 Отключена'}\n\n"
+            f"📊 <b>Статистика:</b>\n"
+            f"🎯 Попадания: {hits}\n"
+            f"🆕 Промахи: {misses}\n"
+            f"📈 Hit rate: {hit_rate:.1f}%\n"
+            f"📋 Всего операций: {total}\n\n"
+        )
+
+        if settings.enable_meetings_dedup:
+            status_text += (
+                "✅ <b>Дедупликация активна</b>\n"
+                "• Повторные загрузки обновляют существующие встречи\n"
+                "• Теги и участники объединяются\n"
+                "• Summary MD перезаписывается\n\n"
+                "🔧 Отключить: <code>/dedup_toggle</code>"
+            )
+        else:
+            status_text += (
+                "⚠️ <b>Дедупликация отключена</b>\n"
+                "• Каждая загрузка создает новую встречу\n"
+                "• Возможны дубликаты в базе данных\n\n"
+                "🔧 Включить: <code>/dedup_toggle</code>"
+            )
+
+        await message.answer(status_text, parse_mode="HTML")
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} requested dedup status")
+
+    except Exception as e:
+        logger.error(f"Error in dedup_status_handler: {e}")
+        await message.answer(f"❌ <b>Ошибка получения статуса</b>\n\n<code>{str(e)}</code>")
+
+
+@router.message(F.text == "/dedup_toggle")
+async def dedup_toggle_handler(message: Message) -> None:
+    """Переключает состояние дедупликации встреч."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        from app.settings import settings
+
+        # Переключаем состояние
+        old_state = settings.enable_meetings_dedup
+        settings.enable_meetings_dedup = not old_state
+        new_state = settings.enable_meetings_dedup
+
+        # Формируем ответ
+        if new_state:
+            description = (
+                "✅ <b>Дедупликация встреч включена</b>\n\n"
+                "📋 <b>Что изменилось:</b>\n"
+                "• Повторные загрузки будут обновлять существующие встречи\n"
+                "• Теги и участники будут объединяться\n"
+                "• Summary MD будет перезаписываться\n\n"
+                "🔧 Отключить: <code>/dedup_toggle</code>"
+            )
+        else:
+            description = (
+                "⚠️ <b>Дедупликация встреч отключена</b>\n\n"
+                "📋 <b>Что изменилось:</b>\n"
+                "• Каждая загрузка будет создавать новую встречу\n"
+                "• Возможны дубликаты в базе данных\n"
+                "• Рекомендуется только для отладки\n\n"
+                "🔧 Включить: <code>/dedup_toggle</code>"
+            )
+
+        await message.answer(description, parse_mode="HTML")
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} toggled meetings dedup: {old_state} → {new_state}")
+
+    except Exception as e:
+        logger.error(f"Error in dedup_toggle_handler: {e}")
+        await message.answer(f"❌ <b>Ошибка переключения</b>\n\n<code>{str(e)}</code>")
 
 
 @router.message(F.text == "/clear_cache")
@@ -460,6 +563,9 @@ async def admin_help_handler(message: Message) -> None:
         "🎨 <b>Форматирование:</b>\n"
         "📱 <code>/adaptive_demo</code> - Демонстрация адаптивного форматирования\n"
         "📱 <code>/adaptive_demo mobile</code> - Показать форматирование для мобильного\n\n"
+        "♻️ <b>Дедупликация встреч:</b>\n"
+        "🎛️ <code>/dedup_status</code> - Статус дедупликации встреч\n"
+        "🔧 <code>/dedup_toggle</code> - Включить/отключить дедупликацию\n\n"
         "❓ <code>/admin_help</code> - Показать эту справку\n"
         "🔧 <code>/admin_config</code> - Показать настройки админских прав\n\n"
         "<i>Доступно только администраторам бота</i>"

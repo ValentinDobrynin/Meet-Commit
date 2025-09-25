@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from datetime import date, timedelta
@@ -324,7 +323,12 @@ def _read_text(raw_bytes: bytes | None, text: str | None, filename: str) -> str:
 def run(raw_bytes: bytes | None, text: str | None, filename: str) -> dict:
     content = _read_text(raw_bytes, text, filename)
     clean = content.strip()
-    sha = hashlib.sha256(clean.encode("utf-8")).hexdigest()
+
+    # Используем улучшенное хэширование для дедупликации встреч
+    from app.core.hash import compute_raw_hash
+
+    sha = compute_raw_hash(clean)
+
     title = (Path(filename).stem or "Meeting")[:80]
     date_iso = _infer_meeting_date(filename, clean)
     attendees = _extract_attendees_en(clean)  # английские канонические имена
