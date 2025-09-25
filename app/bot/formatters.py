@@ -289,8 +289,9 @@ def format_commit_card(
     status = commit.get("status") or commit.get("Status") or "open"
     direction = commit.get("direction") or commit.get("Direction") or "theirs"
     assignees = commit.get("assignees") or commit.get("Assignee") or []
+    from_person = commit.get("from_person") or []
+    tags = commit.get("tags") or commit.get("Tags") or []
     due_iso = commit.get("due_iso") or commit.get("Due")
-    confidence = commit.get("confidence") or commit.get("Confidence")
     short_id = commit.get("short_id") or commit.get("page_id", "")[-6:]
 
     # Получаем эмодзи
@@ -320,8 +321,23 @@ def format_commit_card(
     # Форматируем дедлайн
     due_formatted = _format_date(due_iso)
 
-    # Форматируем confidence
-    conf_str = f"{float(confidence):.0%}" if confidence is not None else "—"
+    # Форматируем confidence (удалено - не используется в новом формате)
+
+    # Форматируем заказчика
+    requester_line = ""
+    if from_person:
+        requester = ", ".join(str(f) for f in from_person[:2])
+        if len(from_person) > 2:
+            requester += f" <i>+{len(from_person) - 2}</i>"
+        requester_line = f"💼 <b>Заказчик:</b> {requester}\n"
+
+    # Форматируем теги
+    tags_line = ""
+    if tags:
+        tags_display = ", ".join(str(t) for t in tags[:3])
+        if len(tags) > 3:
+            tags_display += f" <i>+{len(tags) - 3}</i>"
+        tags_line = f"🏷️ <b>Tags:</b> {tags_display}\n"
 
     # Форматируем статус
     status_text = {
@@ -334,10 +350,11 @@ def format_commit_card(
     # Собираем карточку
     card = (
         f"{status_emoji} <b>{text_escaped}</b>\n"
+        f"{requester_line}"
+        f"{tags_line}"
         f"{direction_emoji} <b>Исполнитель:</b> {who}\n"
         f"📊 <b>Статус:</b> {status_text}\n"
-        f"{urgency_emoji} <b>Срок:</b> {due_formatted}\n"
-        f"📈 <b>Уверенность:</b> {conf_str}"
+        f"{urgency_emoji} <b>Срок:</b> {due_formatted}"
     )
 
     if short_id:
@@ -726,9 +743,9 @@ def format_agenda_card(bundle, device_type: str = "mobile") -> str:
     # Статистика
     stats = []
     if bundle.debts_mine:
-        stats.append(f"👤 Мои: {len(bundle.debts_mine)}")
+        stats.append(f"📋 Заказчик: {len(bundle.debts_mine)}")
     if bundle.debts_theirs:
-        stats.append(f"👥 Их: {len(bundle.debts_theirs)}")
+        stats.append(f"📤 Исполнитель: {len(bundle.debts_theirs)}")
     if bundle.review_open:
         stats.append(f"❓ Вопросы: {len(bundle.review_open)}")
     if bundle.recent_done:
@@ -736,28 +753,19 @@ def format_agenda_card(bundle, device_type: str = "mobile") -> str:
 
     stats_line = " | ".join(stats) if stats else "📋 Пусто"
 
-    # Теги
+    # Убираем неинформативные строки с тегами и участниками
     tags_line = ""
-    if bundle.tags:
-        tags_display = _format_tags_list(bundle.tags, limits.tags)
-        tags_line = f"\n🏷️ {tags_display}"
-
-    # Участники
     people_line = ""
-    if bundle.people:
-        people_display = _format_tags_list(bundle.people, limits.attendees)
-        people_line = f"\n👥 {people_display}"
 
-    # Краткое содержимое (первые строки)
+    # Полное содержимое (без ограничений)
     content_preview = ""
     if bundle.summary_md:
         # Убираем HTML теги для превью
         preview_text = bundle.summary_md.replace("<b>", "").replace("</b>", "")
         preview_text = preview_text.replace("<i>", "").replace("</i>", "")
-        preview_lines = preview_text.split("\n")[:3]  # Первые 3 строки
-        content_preview = f"\n\n{chr(10).join(preview_lines)}"
-        if len(preview_lines) >= 3:
-            content_preview += "\n..."
+
+        # Показываем все строки без ограничений
+        content_preview = f"\n\n{preview_text}"
 
     # Дата генерации
     from datetime import datetime

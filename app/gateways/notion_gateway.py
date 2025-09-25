@@ -74,25 +74,47 @@ def _props(payload: dict[str, Any]) -> dict[str, Any]:
 
 def upsert_meeting(payload: dict[str, Any]) -> str:
     """
-    Создаёт новую страницу Meeting для каждой суммаризации.
+    Создаёт новую страницу Meeting или возвращает существующую по raw_hash.
     Возвращает URL страницы.
     Ожидаемые поля payload: title, date, attendees, source, raw_hash, summary_md, tags.
     """
     with timer(MetricNames.NOTION_CREATE_MEETING):
         try:
-            properties = _props(payload)
             client = _client()
             db_id = _settings().notion_db_meetings_id
+            raw_hash = payload.get("raw_hash", "")
 
             title = payload.get("title", "Untitled Meeting")
             tags_count = len(payload.get("tags", []))
             attendees_count = len(payload.get("attendees", []))
 
+            # Проверяем, существует ли встреча с таким raw_hash
+            if raw_hash:
+                try:
+                    response = client.databases.query(
+                        database_id=db_id,
+                        filter={"property": "Raw hash", "rich_text": {"equals": raw_hash}},
+                        page_size=1,
+                    )
+
+                    if response.get("results"):
+                        existing_page = response["results"][0]
+                        existing_url = existing_page.get("url", "")
+                        logger.info(
+                            f"Found existing meeting with hash '{raw_hash}': {existing_url}"
+                        )
+                        return str(existing_url)
+
+                except Exception as e:
+                    logger.warning(f"Failed to query existing meeting by hash: {e}")
+                    # Продолжаем создание новой встречи
+
             logger.info(
                 f"Creating meeting page: '{title}' with {tags_count} tags, {attendees_count} attendees"
             )
 
-            # Всегда создаем новую запись
+            # Создаем новую запись
+            properties = _props(payload)
             page = client.pages.create(
                 parent={"database_id": db_id},
                 properties=properties,

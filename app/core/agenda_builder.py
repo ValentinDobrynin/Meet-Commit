@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -25,6 +26,8 @@ from app.gateways.notion_commits import (
 )
 from app.gateways.notion_review import _create_client as _create_review_client
 from app.settings import settings
+
+logger = logging.getLogger(__name__)
 
 NOTION_API = "https://api.notion.com/v1"
 
@@ -50,6 +53,9 @@ def _query_commits(
     filter_: dict[str, Any], sorts: list[dict] | None = None, page_size: int = 50
 ) -> list[dict[str, Any]]:
     """Запрос коммитов из Notion с использованием существующего паттерна."""
+    if not settings.commits_db_id:
+        return []  # Graceful fallback если база Commits не настроена
+
     client = _create_commits_client()
 
     try:
@@ -71,12 +77,23 @@ def _query_commits(
         results = response.json().get("results", [])
         return [_map_commit_page(page) for page in results]
 
+    except Exception as e:
+        # Логируем ошибку, но не прерываем работу
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Commits database query failed: {e}. Returning empty results.")
+        return []
+
     finally:
         client.close()
 
 
 def _query_review(filter_: dict[str, Any], page_size: int = 50) -> list[dict[str, Any]]:
     """Запрос элементов ревью из Notion."""
+    if not settings.review_db_id:
+        return []  # Graceful fallback если база Review не настроена
+
     client = _create_review_client()
 
     try:
@@ -93,6 +110,14 @@ def _query_review(filter_: dict[str, Any], page_size: int = 50) -> list[dict[str
 
         results = response.json().get("results", [])
         return [_map_review_page(page) for page in results]
+
+    except Exception as e:
+        # Логируем ошибку, но не прерываем работу
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Review database query failed: {e}. Continuing without review data.")
+        return []
 
     finally:
         client.close()
@@ -119,29 +144,39 @@ def _map_review_page(page: dict[str, Any]) -> dict[str, Any]:
         "id": page["id"],
         "url": page.get("url", ""),
         "text": _extract_field("Commit text", "rich_text"),
-        "reason": _extract_field("Reason", "multi_select"),
-        "tags": _extract_field("Tags", "multi_select"),
+        "reason": _extract_field("Reason", "rich_text"),  # В Review это rich_text, не multi_select
+        "tags": [],  # В Review нет поля Tags, оставляем пустым
         "status": _extract_field("Status", "select"),
         "meeting_ids": _extract_field("Meeting", "relation"),
+        "context": _extract_field("Context", "rich_text"),  # Добавляем Context
     }
 
 
-def _format_commit_line(commit: dict[str, Any]) -> str:
+def _format_commit_line(commit: dict[str, Any], *, show_requester: bool = False) -> str:
     """Форматирование строки коммита для повестки."""
     assignees = commit.get("assignees", [])
-    who = ", ".join(assignees) if assignees else "—"
+    from_person = commit.get("from_person", [])
+
+    # Определяем кого показывать
+    if show_requester:
+        who = ", ".join(from_person) if from_person else "—"
+        who_emoji = "💼"  # Заказчик
+    else:
+        who = ", ".join(assignees) if assignees else "—"
+        who_emoji = "👤"  # Исполнитель
+
     due = commit.get("due_date") or "—"
     status_emoji = {"open": "🟥", "done": "✅", "dropped": "❌"}.get(
         commit.get("status", "open"), "⬜"
     )
 
-    return f"{status_emoji} {commit['text']} — 👤 {who} | ⏳ {due}"
+    return f"{status_emoji} {commit['text']} — {who_emoji} {who} | ⏳ {due}"
 
 
 def _format_review_line(review: dict[str, Any]) -> str:
     """Форматирование строки ревью для повестки."""
-    reasons = review.get("reason", [])
-    reason_text = f" ({', '.join(reasons)})" if reasons else ""
+    reason = review.get("reason", "")
+    reason_text = f" ({reason})" if reason else ""
     return f"❓ {review['text']}{reason_text}"
 
 
@@ -217,35 +252,34 @@ def build_for_meeting(meeting_id: str) -> AgendaBundle:
 @timer("agenda.build_person")
 def build_for_person(person_name_en: str) -> AgendaBundle:
     """Построение персональной повестки."""
-    # Мои обязательства перед этим человеком
+    # Мои обязательства перед этим человеком (задачи, которые я взял)
     mine_filter = {
         "and": [
-            {"property": "Direction", "select": {"equals": "mine"}},
-            {"property": "Tags", "multi_select": {"contains": f"People/{person_name_en}"}},
+            {
+                "property": "From",
+                "multi_select": {"contains": person_name_en},
+            },  # Заказчик = этот человек
             {"property": "Status", "select": {"does_not_equal": "done"}},
             {"property": "Status", "select": {"does_not_equal": "dropped"}},
         ]
     }
     debts_mine = _query_commits(mine_filter)
 
-    # Их обязательства (назначены на этого человека или связаны с ним)
+    # Их обязательства (задачи, которые должен выполнить этот человек)
     theirs_filter = {
         "and": [
-            {"property": "Direction", "select": {"equals": "theirs"}},
             {
-                "or": [
-                    {"property": "Assignee", "multi_select": {"contains": person_name_en}},
-                    {"property": "Tags", "multi_select": {"contains": f"People/{person_name_en}"}},
-                ]
-            },
+                "property": "Assignee",
+                "multi_select": {"contains": person_name_en},
+            },  # Исполнитель = этот человек
             {"property": "Status", "select": {"does_not_equal": "done"}},
             {"property": "Status", "select": {"does_not_equal": "dropped"}},
         ]
     }
     debts_theirs = _query_commits(theirs_filter)
 
-    # Ревью связанные с этим человеком
-    review_filter = {"property": "Tags", "multi_select": {"contains": f"People/{person_name_en}"}}
+    # Ревью связанные с этим человеком (через Assignee)
+    review_filter = {"property": "Assignee", "multi_select": {"contains": person_name_en}}
     reviews = _query_review(review_filter)
 
     # Недавно выполненные (последние 7 дней)
@@ -270,12 +304,12 @@ def build_for_person(person_name_en: str) -> AgendaBundle:
     md_parts = []
 
     if debts_mine:
-        md_parts.append(f"👤 <b>Мои обязательства перед {person_name_en}</b>")
+        md_parts.append(f"📋 <b>Задачи от {person_name_en} (заказчик)</b>")
         md_parts.extend(_format_commit_line(c) for c in debts_mine)
 
     if debts_theirs:
-        md_parts.append(f"\n👥 <b>Обязательства {person_name_en}</b>")
-        md_parts.extend(_format_commit_line(c) for c in debts_theirs)
+        md_parts.append(f"\n📤 <b>Задачи для {person_name_en} (исполнитель)</b>")
+        md_parts.extend(_format_commit_line(c, show_requester=True) for c in debts_theirs)
 
     if reviews:
         md_parts.append("\n❓ <b>Открытые вопросы</b>")
@@ -318,8 +352,8 @@ def build_for_tag(tag: str) -> AgendaBundle:
     }
     commits = _query_commits(commits_filter)
 
-    # Ревью по тегу
-    review_filter = {"property": "Tags", "multi_select": {"contains": tag}}
+    # Ревью по тегу - используем Context field для поиска упоминаний тега
+    review_filter = {"property": "Context", "rich_text": {"contains": tag}}
     reviews = _query_review(review_filter)
 
     # Недавно выполненные по тегу

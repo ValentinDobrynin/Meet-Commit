@@ -242,6 +242,7 @@ def partition_for_storage(
                     "text": commit.text,
                     "direction": commit.direction,
                     "assignees": commit.assignees,
+                    "from_person": getattr(commit, "from_person", []) or ["System"],  # Заказчик
                     "due_iso": commit.due_iso,
                     "confidence": 0.3,  # низкий confidence для структурных ошибок
                     "reasons": ["structure_error"] + struct_errors,
@@ -270,6 +271,7 @@ def partition_for_storage(
                     "text": commit.text,
                     "direction": commit.direction,
                     "assignees": commit.assignees,
+                    "from_person": getattr(commit, "from_person", []) or ["System"],  # Заказчик
                     "due_iso": commit.due_iso,
                     "confidence": validation.adjusted_confidence,
                     "reasons": validation.reason_for_review or ["needs_review"],

@@ -812,6 +812,7 @@ async def cmd_confirm(msg: Message):
             "text": text,
             "direction": direction,
             "assignees": assignees,
+            "from_person": ["System"],  # Для подтвержденных из Review - заказчик System
             "due_iso": due_iso,
             "confidence": item["confidence"] or 0.6,
             "flags": [],

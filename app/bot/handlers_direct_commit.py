@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-import uuid
-from datetime import datetime
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -101,17 +99,19 @@ def _build_edit_keyboard() -> InlineKeyboardMarkup:
 
 
 async def _create_direct_meeting() -> str:
-    """Создает специальную встречу 'Direct' для прямых коммитов."""
+    """Создает или переиспользует единую встречу 'Direct Commits' для всех прямых коммитов."""
     try:
-        # Проверяем, есть ли уже встреча "Direct"
-        # Для простоты создаем новую каждый раз с уникальным названием
+        # Используем фиксированный хеш для единой встречи Direct Commits
+        # Это позволит upsert_meeting переиспользовать существующую встречу
+        DIRECT_COMMITS_HASH = "direct-commits-permanent-meeting"
+
         direct_meeting_data = {
-            "title": f"Direct Commits {datetime.now().strftime('%Y-%m-%d')}",
-            "date": datetime.now().date().isoformat(),
+            "title": "Direct Commits (Прямые коммиты)",
+            "date": "2025-01-01",  # Фиксированная дата для постоянной встречи
             "attendees": ["System"],
             "source": "direct_commit",
-            "raw_hash": str(uuid.uuid4()),
-            "summary_md": "Встреча для прямых коммитов, созданных через команду /commit",
+            "raw_hash": DIRECT_COMMITS_HASH,  # Фиксированный хеш для дедупликации
+            "summary_md": "Постоянная встреча для всех прямых коммитов, созданных через команду /commit. Позволяет избежать замусоривания базы данных Meetings.",
             "tags": ["Topic/Direct"],
         }
 
@@ -541,6 +541,7 @@ async def confirm_direct_commit(callback: CallbackQuery, state: FSMContext) -> N
             "text": text,
             "direction": direction,
             "assignees": assignees,
+            "from_person": [from_person],  # Заказчик (кто поставил задачу)
             "due_iso": due_iso,
             "confidence": 1.0,  # Прямые коммиты имеют максимальную уверенность
             "flags": ["direct"],  # Флаг для отличия от извлеченных коммитов
@@ -575,6 +576,7 @@ async def confirm_direct_commit(callback: CallbackQuery, state: FSMContext) -> N
                     "status": "open",
                     "direction": direction,
                     "assignees": assignees,
+                    "from_person": [from_person],  # Добавляем заказчика
                     "due_iso": due_iso,
                     "confidence": 1.0,
                     "tags": tags,

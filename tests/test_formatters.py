@@ -167,7 +167,7 @@ class TestCommitCard:
         assert "Подготовить отчет по IFRS" in result
         assert "Valya Dobrynin" in result
         assert "15.01.2025" in result
-        assert "85%" in result  # confidence
+        # confidence больше не отображается в новом формате
         assert "abc123" in result
 
     def test_format_commit_card_completed(self):
@@ -221,7 +221,7 @@ class TestReviewCard:
         assert "🟠" in result  # pending status
         assert "unclear_assignee" in result
         assert "Обсуждение на встрече" in result
-        assert "50%" in result  # confidence
+        # confidence больше не отображается в новом формате
 
 
 class TestSpecializedCards:

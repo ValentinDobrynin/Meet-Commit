@@ -57,8 +57,8 @@ def _build_people_keyboard() -> InlineKeyboardMarkup:
     people_list = load_people()
     buttons = []
 
-    # Добавляем популярных людей
-    popular_people = ["Valya Dobrynin", "Sasha Katanov", "Ivan Petrov"]  # Можно настроить
+    # Добавляем популярных людей (исключаем себя, для себя используется /mine)
+    popular_people = ["Sasha Katanov", "Ivan Petrov"]  # Можно настроить
 
     # Создаем множество имен из списка людей
     people_names = {person.get("name_en", "") for person in people_list if person.get("name_en")}

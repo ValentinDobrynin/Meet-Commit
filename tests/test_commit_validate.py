@@ -21,10 +21,12 @@ class TestStructuralValidation:
             text="Подготовить отчет по IFRS",
             direction="theirs",
             assignees=["Daniil"],
+            from_person=["System"],
             due_iso="2024-12-31",
             confidence=0.8,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Daniil: Подготовить отчет по IFRS [due 2024-12-31]",
             key="test_key",
@@ -39,12 +41,15 @@ class TestStructuralValidation:
         """Тест валидации коммита с коротким текстом."""
         commit = NormalizedCommit(
             text="Тест",  # менее 8 символов
+            from_person=["System"],
             direction="mine",
             assignees=[],
+            from_person=["System"],
             due_iso=None,
             confidence=0.5,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -59,12 +64,15 @@ class TestStructuralValidation:
         """Тест валидации коммита с неправильным direction."""
         commit = NormalizedCommit(
             text="Выполнить задачу",
+            from_person=["System"],
             direction="invalid",  # неправильное значение
             assignees=[],
+            from_person=["System"],
             due_iso=None,
             confidence=0.5,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -81,10 +89,12 @@ class TestStructuralValidation:
             text="Выполнить задачу",
             direction="mine",
             assignees=[],
+            from_person=["System"],
             due_iso=None,
             confidence=1.5,  # вне диапазона 0-1
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -99,12 +109,15 @@ class TestStructuralValidation:
         """Тест валидации коммита с множественными ошибками."""
         commit = NormalizedCommit(
             text="",  # пустой текст
+            from_person=["System"],
             direction="wrong",  # неправильное значение
             assignees=[],
+            from_person=["System"],
             due_iso=None,
             confidence=-0.1,  # отрицательное значение
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -127,10 +140,12 @@ class TestSemanticValidation:
             text="Подготовить детальный отчет по IFRS до конца месяца",
             direction="theirs",
             assignees=["Daniil"],
+            from_person=["System"],
             due_iso="2024-12-31",
             confidence=0.9,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -155,6 +170,7 @@ class TestSemanticValidation:
             confidence=0.8,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -180,6 +196,7 @@ class TestSemanticValidation:
             confidence=0.8,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -200,10 +217,12 @@ class TestSemanticValidation:
             text="Подготовить отчет",
             direction="theirs",
             assignees=["Daniil"],
+            from_person=["System"],
             due_iso="2024-01-01",  # раньше даты встречи
             confidence=0.8,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -225,10 +244,12 @@ class TestSemanticValidation:
             text="Подготовить отчет",
             direction="theirs",
             assignees=["Daniil"],
+            from_person=["System"],
             due_iso="invalid-date",  # неправильный формат
             confidence=0.8,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -249,10 +270,12 @@ class TestSemanticValidation:
             text="Подготовить отчет",
             direction="theirs",
             assignees=["Daniil"],
+            from_person=["System"],
             due_iso=None,  # нет дедлайна
             confidence=0.8,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -272,10 +295,12 @@ class TestSemanticValidation:
             text="Если получится, подготовлю отчет",
             direction="mine",
             assignees=["Valentin"],
+            from_person=["System"],
             due_iso="2024-12-31",
             confidence=0.8,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -297,10 +322,12 @@ class TestSemanticValidation:
             text="Отчет будет сделано командой",
             direction="theirs",
             assignees=["Daniil"],
+            from_person=["System"],
             due_iso="2024-12-31",
             confidence=0.8,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -319,12 +346,15 @@ class TestSemanticValidation:
         """Тест валидации слишком общего коммита."""
         commit = NormalizedCommit(
             text="Сделать задачу",  # общая формулировка
+            from_person=["System"],
             direction="mine",
             assignees=["Valentin"],
+            from_person=["System"],
             due_iso="2024-12-31",
             confidence=0.8,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -343,12 +373,14 @@ class TestSemanticValidation:
         """Тест ограничения confidence в пределах 0-1."""
         commit = NormalizedCommit(
             text="Если получится, возможно сделать задачу",  # много штрафов
+            from_person=["System"],
             direction="theirs",
             assignees=[],  # нет исполнителей
             due_iso=None,  # нет дедлайна
             confidence=0.3,  # низкий изначальный confidence
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -378,13 +410,15 @@ class TestSemanticValidation:
 
         for confidence, expected_level in test_cases:
             commit = NormalizedCommit(
-                text="Подготовить детальный отчет",
+            text="Подготовить детальный отчет",
                 direction="theirs",
                 assignees=["Daniil"],
+            from_person=["System"],
                 due_iso="2024-12-31",
                 confidence=confidence,
                 flags=[],
                 context=None,
+                from_person=["System"],
                 reasoning=None,
                 title="Test title",
                 key="test_key",
@@ -405,26 +439,30 @@ class TestPartitioning:
         """Тест разделения высококачественных коммитов."""
         commits = [
             NormalizedCommit(
-                text="Подготовить детальный отчет по IFRS",
+            text="Подготовить детальный отчет по IFRS",
                 direction="theirs",
                 assignees=["Daniil"],
+            from_person=["System"],
                 due_iso="2024-12-31",
                 confidence=0.9,
                 flags=[],
                 context=None,
+                from_person=["System"],
                 reasoning=None,
                 title="Test title 1",
                 key="test_key_1",
                 tags=[],
             ),
             NormalizedCommit(
-                text="Провести анализ финансовых показателей",
+            text="Провести анализ финансовых показателей",
                 direction="mine",
                 assignees=["Valentin"],
+            from_person=["System"],
                 due_iso="2024-11-30",
                 confidence=0.8,
                 flags=[],
                 context=None,
+                from_person=["System"],
                 reasoning=None,
                 title="Test title 2",
                 key="test_key_2",
@@ -444,13 +482,15 @@ class TestPartitioning:
         """Тест разделения низкокачественных коммитов."""
         commits = [
             NormalizedCommit(
-                text="Если получится, сделать задачу",  # условная формулировка
+            text="Если получится, сделать задачу",  # условная формулировка
+            from_person=["System"],
                 direction="theirs",
                 assignees=[],  # нет исполнителей
                 due_iso=None,  # нет дедлайна
                 confidence=0.5,
                 flags=[],
                 context=None,
+                from_person=["System"],
                 reasoning=None,
                 title="Test title",
                 key="test_key",
@@ -476,13 +516,16 @@ class TestPartitioning:
         """Тест разделения коммитов со структурными ошибками."""
         commits = [
             NormalizedCommit(
-                text="Тест",  # слишком короткий текст
+            text="Тест",  # слишком короткий текст
+            from_person=["System"],
                 direction="mine",
                 assignees=["Valentin"],
+            from_person=["System"],
                 due_iso="2024-12-31",
                 confidence=0.8,
                 flags=[],
                 context=None,
+                from_person=["System"],
                 reasoning=None,
                 title="Test title",
                 key="test_key",
@@ -507,13 +550,15 @@ class TestPartitioning:
         commits = [
             # Высокое качество
             NormalizedCommit(
-                text="Подготовить детальный отчет по IFRS",
+            text="Подготовить детальный отчет по IFRS",
                 direction="theirs",
                 assignees=["Daniil"],
+            from_person=["System"],
                 due_iso="2024-12-31",
                 confidence=0.9,
                 flags=[],
                 context=None,
+                from_person=["System"],
                 reasoning=None,
                 title="High quality",
                 key="high_key",
@@ -521,13 +566,15 @@ class TestPartitioning:
             ),
             # Низкое качество
             NormalizedCommit(
-                text="Возможно, сделать что-то",
+            text="Возможно, сделать что-то",
                 direction="theirs",
                 assignees=[],
+            from_person=["System"],
                 due_iso=None,
                 confidence=0.4,
                 flags=[],
                 context=None,
+                from_person=["System"],
                 reasoning=None,
                 title="Low quality",
                 key="low_key",
@@ -535,13 +582,16 @@ class TestPartitioning:
             ),
             # Структурная ошибка
             NormalizedCommit(
-                text="",  # пустой текст
+            text="",  # пустой текст
+            from_person=["System"],
                 direction="mine",
                 assignees=["Valentin"],
+            from_person=["System"],
                 due_iso="2024-12-31",
                 confidence=0.8,
                 flags=[],
                 context=None,
+                from_person=["System"],
                 reasoning=None,
                 title="Structural error",
                 key="error_key",
@@ -575,13 +625,15 @@ class TestValidateAndPartition:
         """Тест добавления тегов встречи к качественным коммитам."""
         commits = [
             NormalizedCommit(
-                text="Подготовить отчет по IFRS",
+            text="Подготовить отчет по IFRS",
                 direction="theirs",
                 assignees=["Daniil"],
+            from_person=["System"],
                 due_iso="2024-12-31",
                 confidence=0.9,
                 flags=[],
                 context=None,
+                from_person=["System"],
                 reasoning=None,
                 title="Test title",
                 key="test_key",
@@ -613,13 +665,16 @@ class TestValidateAndPartition:
         """Тест что теги не добавляются к элементам ревью."""
         commits = [
             NormalizedCommit(
-                text="Возможно сделать что-то",  # низкое качество
+            text="Возможно сделать что-то",  # низкое качество
+            from_person=["System"],
                 direction="theirs",
                 assignees=[],
+            from_person=["System"],
                 due_iso=None,
                 confidence=0.3,
                 flags=[],
                 context=None,
+                from_person=["System"],
                 reasoning=None,
                 title="Test title",
                 key="test_key",
@@ -666,10 +721,12 @@ class TestEdgeCases:
             text="Подготовить отчет",
             direction="theirs",
             assignees=["Someone"],
+            from_person=["System"],
             due_iso="2024-12-31",
             confidence=0.8,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -692,10 +749,12 @@ class TestEdgeCases:
             text="Подготовить отчет",
             direction="theirs",
             assignees=["Daniil"],
+            from_person=["System"],
             due_iso="2025-01-01",  # будущая дата
             confidence=0.8,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",
@@ -718,10 +777,12 @@ class TestEdgeCases:
             text="Подготовить отчет",
             direction="theirs",
             assignees=["Daniil"],
+            from_person=["System"],
             due_iso="2024-06-15",  # та же дата что и встреча
             confidence=0.8,
             flags=[],
             context=None,
+            from_person=["System"],
             reasoning=None,
             title="Test title",
             key="test_key",

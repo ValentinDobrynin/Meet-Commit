@@ -59,7 +59,7 @@ Finance/Fundraising:
 Business/Lavka:
   patterns:
     - "lavka"
-    - "лавка"
+    - "лавк"           # ловит лавка, лавки, лавке, лавку
     - "darkstore"
     - "быстрая доставка"
     - "темная лавка"

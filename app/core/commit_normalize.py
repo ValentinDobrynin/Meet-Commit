@@ -369,11 +369,13 @@ class NormalizedCommit:
     - title: Заголовок для отображения
     - key: Уникальный ключ для upsert
     - tags: Теги (заполняются на уровне выше)
+    - from_person: Заказчик (кто поставил задачу)
     """
 
     text: str
     direction: str
     assignees: list[str]
+    from_person: list[str]  # Заказчик (кто поставил задачу)
     due_iso: str | None
     confidence: float
     flags: list[str]
@@ -432,11 +434,23 @@ def normalize_commits(
         # Извлекаем теги из текста коммита с использованием унифицированной системы
         commit_tags = tag_text_for_commit(commit.text + " " + (commit.context or ""))
 
+        # Определяем заказчика для коммитов из встреч
+        # Для извлеченных коммитов заказчик определяется по контексту встречи
+        from_person = []
+        if commit.direction == "mine":
+            # Для "mine" коммитов заказчик - тот, кто их записал (обычно ведущий встречи)
+            from_person = [fill_mine_owner] if fill_mine_owner else ["System"]
+        else:
+            # Для "theirs" коммитов заказчик - тот, кто поставил задачу (из контекста)
+            # Пока ставим System, позже можно улучшить логику
+            from_person = ["System"]
+
         result.append(
             NormalizedCommit(
                 text=commit.text,
                 direction=commit.direction,
                 assignees=normalized_assignees,
+                from_person=from_person,
                 due_iso=due,
                 confidence=commit.confidence,
                 flags=commit.flags or [],

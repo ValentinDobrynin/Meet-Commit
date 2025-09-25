@@ -43,6 +43,7 @@ def _props_review(item: dict, meeting_page_id: str) -> dict[str, Any]:
         "Commit text": {"rich_text": [{"text": {"content": (item.get("text") or "")[:1800]}}]},
         "Direction": {"select": {"name": item.get("direction", "theirs")}},
         "Assignee": {"multi_select": [{"name": a} for a in (item.get("assignees") or [])]},
+        "From": {"multi_select": [{"name": f} for f in (item.get("from_person") or [])]},
         "Due": {"date": {"start": due}} if due else {"date": None},
         "Confidence": {"number": float(item.get("confidence", 0.0))},
         "Reason": {

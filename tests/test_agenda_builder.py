@@ -4,8 +4,6 @@
 
 from unittest.mock import Mock, patch
 
-import pytest
-
 from app.core.agenda_builder import (
     AgendaBundle,
     _extract_tags_and_people,
@@ -76,17 +74,17 @@ class TestFormatting:
 
     def test_format_review_line(self):
         """Тест форматирования строки ревью."""
-        review = {"text": "Review question", "reason": ["unclear", "missing info"]}
+        review = {"text": "Review question", "reason": "unclear and missing info"}
 
         result = _format_review_line(review)
 
         assert "❓" in result
         assert "Review question" in result
-        assert "(unclear, missing info)" in result
+        assert "(unclear and missing info)" in result
 
     def test_format_review_line_no_reason(self):
         """Тест форматирования ревью без причины."""
-        review = {"text": "Simple question", "reason": []}
+        review = {"text": "Simple question", "reason": ""}
 
         result = _format_review_line(review)
 
@@ -139,8 +137,8 @@ class TestMapReviewPage:
             "url": "https://notion.so/review-123",
             "properties": {
                 "Commit text": {"rich_text": [{"plain_text": "Review this commit"}]},
-                "Reason": {"multi_select": [{"name": "unclear"}, {"name": "incomplete"}]},
-                "Tags": {"multi_select": [{"name": "Finance/IFRS"}, {"name": "Topic/Review"}]},
+                "Reason": {"rich_text": [{"plain_text": "unclear and incomplete"}]},
+                "Context": {"rich_text": [{"plain_text": "Finance/IFRS context"}]},
                 "Status": {"select": {"name": "pending"}},
                 "Meeting": {"relation": [{"id": "meeting-123"}]},
             },
@@ -151,10 +149,11 @@ class TestMapReviewPage:
         assert result["id"] == "review-123"
         assert result["url"] == "https://notion.so/review-123"
         assert result["text"] == "Review this commit"
-        assert result["reason"] == ["unclear", "incomplete"]
-        assert result["tags"] == ["Finance/IFRS", "Topic/Review"]
+        assert result["reason"] == "unclear and incomplete"
+        assert result["tags"] == []  # В Review нет поля Tags
         assert result["status"] == "pending"
         assert result["meeting_ids"] == ["meeting-123"]
+        assert result["context"] == "Finance/IFRS context"
 
     def test_map_review_page_empty_fields(self):
         """Тест маппинга страницы ревью с пустыми полями."""
@@ -162,8 +161,8 @@ class TestMapReviewPage:
             "id": "review-456",
             "properties": {
                 "Commit text": {"rich_text": []},
-                "Reason": {"multi_select": []},
-                "Tags": {"multi_select": []},
+                "Reason": {"rich_text": []},
+                "Context": {"rich_text": []},
                 "Status": {"select": None},
                 "Meeting": {"relation": []},
             },
@@ -174,10 +173,11 @@ class TestMapReviewPage:
         assert result["id"] == "review-456"
         assert result["url"] == ""
         assert result["text"] == ""
-        assert result["reason"] == []
+        assert result["reason"] == ""
         assert result["tags"] == []
         assert result["status"] is None
         assert result["meeting_ids"] == []
+        assert result["context"] == ""
 
 
 class TestBuildFunctions:
@@ -204,10 +204,11 @@ class TestBuildFunctions:
             {
                 "id": "review-1",
                 "text": "Review question",
-                "reason": ["unclear"],
-                "tags": ["Finance/IFRS"],
+                "reason": "unclear",
+                "tags": [],
                 "status": "pending",
                 "meeting_ids": ["meeting-123"],
+                "context": "Finance/IFRS",
             }
         ]
 
@@ -218,10 +219,10 @@ class TestBuildFunctions:
         assert bundle.context_type == "Meeting"
         assert bundle.context_key == "meeting-123"
         assert len(bundle.debts_mine) == 1
-        assert len(bundle.review_open) == 1
+        assert len(bundle.review_open) == 1  # Review включен обратно
         assert "commit-1" in bundle.commits_linked
         assert "🧾" in bundle.summary_md
-        assert "❓" in bundle.summary_md
+        assert "❓" in bundle.summary_md  # Review включен обратно
         assert "Finance/IFRS" in bundle.tags
         assert "John Doe" in bundle.people
 
@@ -281,7 +282,7 @@ class TestBuildFunctions:
         assert len(bundle.debts_theirs) == 1
         assert len(bundle.recent_done) == 1
         assert "👤" in bundle.summary_md
-        assert "👥" in bundle.summary_md
+        assert "💼" in bundle.summary_md  # Теперь используется эмодзи заказчика
         assert "✅" in bundle.summary_md
 
     @patch("app.core.agenda_builder._query_commits")
@@ -386,8 +387,8 @@ class TestQueryFunctions:
                     "url": "https://notion.so/review-1",
                     "properties": {
                         "Commit text": {"rich_text": [{"plain_text": "Review question"}]},
-                        "Reason": {"multi_select": [{"name": "unclear"}]},
-                        "Tags": {"multi_select": [{"name": "Finance/IFRS"}]},
+                        "Reason": {"rich_text": [{"plain_text": "unclear"}]},
+                        "Context": {"rich_text": [{"plain_text": "Finance/IFRS"}]},
                         "Status": {"select": {"name": "pending"}},
                         "Meeting": {"relation": [{"id": "meeting-123"}]},
                     },
@@ -404,7 +405,8 @@ class TestQueryFunctions:
         # Проверяем
         assert len(result) == 1
         assert result[0]["text"] == "Review question"
-        assert result[0]["reason"] == ["unclear"]
+        assert result[0]["reason"] == "unclear"
+        assert result[0]["context"] == "Finance/IFRS"
         mock_client.close.assert_called_once()
 
 
@@ -442,9 +444,10 @@ class TestErrorHandling:
         # Тестируем
         filter_ = {"property": "Status", "select": {"equals": "open"}}
 
-        with pytest.raises(Exception):  # noqa: B017
-            _query_commits(filter_)
+        # Теперь функция возвращает пустой список при ошибке, а не выбрасывает исключение
+        result = _query_commits(filter_)
 
+        assert result == []  # Ожидаем пустой список при ошибке
         mock_client.close.assert_called_once()
 
 
@@ -472,10 +475,11 @@ class TestIntegration:
             {
                 "id": "review-1",
                 "text": "Need clarification",
-                "reason": ["unclear", "incomplete"],
-                "tags": ["Finance/IFRS"],
+                "reason": "unclear and incomplete",
+                "tags": [],
                 "status": "pending",
                 "meeting_ids": ["meeting-123"],
+                "context": "Finance/IFRS",
             }
         ]
 
@@ -486,15 +490,15 @@ class TestIntegration:
         assert bundle.context_type == "Meeting"
         assert bundle.context_key == "meeting-123"
         assert len(bundle.debts_mine) == 1
-        assert len(bundle.review_open) == 1
+        assert len(bundle.review_open) == 1  # Review включен обратно
         assert bundle.commits_linked == ["commit-1"]
         assert len(bundle.raw_hash) == 16
 
         # Проверяем содержимое summary
         assert "🧾" in bundle.summary_md
         assert "Important task" in bundle.summary_md
-        assert "❓" in bundle.summary_md
-        assert "Need clarification" in bundle.summary_md
+        assert "❓" in bundle.summary_md  # Review включен обратно
+        assert "Need clarification" in bundle.summary_md  # Review включен обратно
 
         # Проверяем теги и участников
         assert "Finance/IFRS" in bundle.tags

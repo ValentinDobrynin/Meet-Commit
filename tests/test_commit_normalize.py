@@ -389,6 +389,7 @@ class TestUtilityFunctions:
                 text="Тест",
                 direction="mine",
                 assignees=["Test"],
+                from_person=["System"],
                 due_iso=None,
                 confidence=0.8,
                 flags=[],
