@@ -1,29 +1,16 @@
 from __future__ import annotations
 
-import httpx
-from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.core.clients import get_async_openai_client
 from app.core.metrics import MetricNames, async_timer, track_llm_tokens
 from app.settings import settings
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-async def _client() -> AsyncOpenAI:
-    if not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY отсутствует")
-
-    timeout = httpx.Timeout(
-        connect=10.0,  # Таймаут подключения
-        read=240.0,  # Таймаут чтения (4 минуты для больших ответов)
-        write=10.0,  # Таймаут записи
-        pool=5.0,  # Таймаут получения соединения из пула
-    )
-
-    http = httpx.AsyncClient(
-        timeout=timeout, limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
-    )
-    return AsyncOpenAI(api_key=settings.openai_api_key, http_client=http)
+async def _client():
+    """Получает асинхронный OpenAI клиент с retry логикой."""
+    return await get_async_openai_client()
 
 
 def _merge_prompt(base: str | None, extra: str | None) -> str:

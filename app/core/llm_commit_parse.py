@@ -9,32 +9,13 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import httpx
-from openai import OpenAI
-
+from app.core.clients import get_openai_parse_client
 from app.core.metrics import MetricNames, timer, track_llm_tokens
-from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
 
-def _create_client() -> OpenAI:
-    """Создает синхронный OpenAI клиент с таймаутами."""
-    if not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY отсутствует")
-
-    timeout = httpx.Timeout(
-        connect=10.0,  # Таймаут подключения
-        read=60.0,  # Таймаут чтения (1 минута для парсинга)
-        write=10.0,  # Таймаут записи
-        pool=5.0,  # Таймаут получения соединения из пула
-    )
-
-    http = httpx.Client(
-        timeout=timeout, limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
-    )
-
-    return OpenAI(api_key=settings.openai_api_key, http_client=http)
+# Удалено: используем единый клиент из app.core.clients
 
 
 def _load_prompt() -> str:
@@ -49,7 +30,7 @@ def _load_prompt() -> str:
 def _call_llm_parse(text: str) -> dict[str, Any]:
     """Вызывает LLM для парсинга текста коммита."""
     prompt = _load_prompt()
-    client = _create_client()
+    client = get_openai_parse_client()
 
     try:
         resp = client.chat.completions.create(

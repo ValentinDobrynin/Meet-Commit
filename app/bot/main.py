@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from .handlers import router
 from .handlers_admin import router as admin_router
+from .handlers_admin_monitoring import router as admin_monitoring_router
 from .handlers_agenda import router as agenda_router
 from .handlers_direct_commit import router as direct_commit_router
 from .handlers_inline import router as inline_router
@@ -87,6 +88,7 @@ dp.include_router(agenda_router)  # Система повесток с FSM
 dp.include_router(queries_router)  # Команды запросов к коммитам
 dp.include_router(inline_router)
 dp.include_router(admin_router)
+dp.include_router(admin_monitoring_router)  # Расширенные админские команды
 dp.include_router(people_router)
 dp.include_router(router)  # Основной роутер последним
 

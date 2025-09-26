@@ -5,8 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
-
+from app.core.clients import get_notion_http_client
 from app.core.constants import (
     REVIEW_STATUS_PENDING,
 )
@@ -17,17 +16,7 @@ logger = logging.getLogger(__name__)
 NOTION_API = "https://api.notion.com/v1"
 
 
-def _create_client() -> httpx.Client:
-    """Создает новый HTTP клиент для Notion API."""
-    if not settings.notion_token or not settings.review_db_id:
-        raise RuntimeError("Notion credentials missing: NOTION_TOKEN or REVIEW_DB_ID")
-
-    headers = {
-        "Authorization": f"Bearer {settings.notion_token}",
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json",
-    }
-    return httpx.Client(timeout=30, headers=headers)
+# Удалено: используем единый клиент из app.core.clients
 
 
 def _props_review(item: dict, meeting_page_id: str) -> dict[str, Any]:
@@ -79,7 +68,7 @@ def find_pending_by_key(key: str) -> dict | None:
         "page_size": 1,
     }
 
-    client = _create_client()
+    client = get_notion_http_client()
     try:
         response = client.post(f"{NOTION_API}/databases/{settings.review_db_id}/query", json=body)
         response.raise_for_status()
@@ -112,7 +101,7 @@ def upsert_review(item: dict, meeting_page_id: str) -> dict:
     key = item.get("key") or ""
     existing = find_pending_by_key(key)
 
-    client = _create_client()
+    client = get_notion_http_client()
     try:
         if existing:
             # Обновляем существующий элемент
@@ -199,7 +188,7 @@ def enqueue(items: list[dict], meeting_page_id: str) -> list[str]:
         return []
 
     ids: list[str] = []
-    client = _create_client()
+    client = get_notion_http_client()
 
     try:
         for item in items:
@@ -235,7 +224,7 @@ def set_status(page_id: str, status: str, *, linked_commit_id: str | None = None
         linked_commit_id: ID связанного коммита (для resolved статуса)
     """
 
-    client = _create_client()
+    client = get_notion_http_client()
 
     try:
         # Маппинг новых статусов на старые для обратной совместимости
@@ -286,7 +275,7 @@ def archive(page_id: str) -> None:
     Args:
         page_id: ID страницы в Notion
     """
-    client = _create_client()
+    client = get_notion_http_client()
 
     try:
         response = client.patch(
@@ -371,7 +360,7 @@ def list_pending(limit: int = 5) -> list[dict]:
     # Открытые статусы (не confirmed/rejected)
     OPEN_STATUSES = ["pending", "needs-review"]
 
-    client = _create_client()
+    client = get_notion_http_client()
 
     try:
         # Фильтруем только открытые статусы
@@ -448,7 +437,7 @@ def get_by_short_id(short_id: str) -> dict | None:
         Словарь с данными элемента или None
     """
     short_id = short_id.lower()
-    client = _create_client()
+    client = get_notion_http_client()
 
     try:
         cursor: str | None = None
@@ -532,7 +521,7 @@ def update_fields(
     if not props:
         return True  # Нечего обновлять
 
-    client = _create_client()
+    client = get_notion_http_client()
 
     try:
         response = client.patch(f"{NOTION_API}/pages/{page_id}", json={"properties": props})

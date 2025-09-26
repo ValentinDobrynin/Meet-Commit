@@ -5,13 +5,11 @@ import re
 from pathlib import Path
 from typing import Any, Literal
 
-import httpx
-from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from app.core.clients import get_openai_client
 from app.core.metrics import MetricNames, timer, track_llm_tokens
-from app.settings import settings
 
 # ==== Данные, которые возвращаем дальше по пайплайну ====
 
@@ -152,22 +150,7 @@ def _to_models(payload: dict[str, Any]) -> list[ExtractedCommit]:
     return out
 
 
-def _create_client() -> OpenAI:
-    """Создает синхронный OpenAI клиент с таймаутами."""
-    if not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY отсутствует")
-
-    timeout = httpx.Timeout(
-        connect=10.0,  # Таймаут подключения
-        read=240.0,  # Таймаут чтения (4 минуты для больших ответов)
-        write=10.0,  # Таймаут записи
-        pool=5.0,  # Таймаут получения соединения из пула
-    )
-
-    http = httpx.Client(
-        timeout=timeout, limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
-    )
-    return OpenAI(api_key=settings.openai_api_key, http_client=http)
+# Удалено: используем единый клиент из app.core.clients
 
 
 # ==== Публичный интерфейс ====
@@ -189,7 +172,7 @@ def extract_commits(
         mdl = model or "gpt-4o-mini"
         messages = _build_messages(text, attendees_en, meeting_date_iso)
 
-        client = _create_client()
+        client = get_openai_client()
         try:
             # попытка №1 с response_format
             resp = client.chat.completions.create(

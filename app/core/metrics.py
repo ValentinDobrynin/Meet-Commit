@@ -240,6 +240,11 @@ class MetricNames:
     NOTION_QUERY_COMMITS = "notion.query_commits"
     NOTION_UPDATE_COMMIT_STATUS = "notion.update_commit_status"
     NOTION_CREATE_REVIEW = "notion.create_review"
+    
+    # Асинхронные Notion операции
+    NOTION_UPSERT_COMMITS_ASYNC = "notion.upsert_commits_async"
+    NOTION_QUERY_COMMITS_ASYNC = "notion.query_commits_async"
+    NOTION_UPDATE_COMMIT_STATUS_ASYNC = "notion.update_commit_status_async"
     NOTION_UPDATE_REVIEW = "notion.update_review"
 
     # Обработка файлов

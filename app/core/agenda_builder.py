@@ -17,14 +17,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from app.core.clients import get_notion_http_client
 from app.core.metrics import timer
-from app.gateways.notion_commits import (
-    _create_client as _create_commits_client,
-)
-from app.gateways.notion_commits import (
-    _map_commit_page,
-)
-from app.gateways.notion_review import _create_client as _create_review_client
+from app.gateways.notion_commits import _map_commit_page
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -56,8 +51,7 @@ def _query_commits(
     if not settings.commits_db_id:
         return []  # Graceful fallback если база Commits не настроена
 
-    client = _create_commits_client()
-
+    client = get_notion_http_client()
     try:
         payload: dict[str, Any] = {
             "page_size": page_size,
@@ -94,8 +88,7 @@ def _query_review(filter_: dict[str, Any], page_size: int = 50) -> list[dict[str
     if not settings.review_db_id:
         return []  # Graceful fallback если база Review не настроена
 
-    client = _create_review_client()
-
+    client = get_notion_http_client()
     try:
         payload = {
             "page_size": page_size,

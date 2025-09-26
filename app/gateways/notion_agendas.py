@@ -8,8 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
-import httpx
-
+from app.core.clients import get_notion_http_client
 from app.core.metrics import timer
 from app.settings import settings
 
@@ -21,17 +20,7 @@ NOTION_API = "https://api.notion.com/v1"
 ContextType = Literal["Meeting", "Person", "Tag"]
 
 
-def _create_client() -> httpx.Client:
-    """Создает новый HTTP клиент для Notion API."""
-    if not settings.notion_token or not settings.agendas_db_id:
-        raise RuntimeError("Notion credentials missing: NOTION_TOKEN or AGENDAS_DB_ID")
-
-    headers = {
-        "Authorization": f"Bearer {settings.notion_token}",
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json",
-    }
-    return httpx.Client(timeout=30, headers=headers)
+# Удалено: используем единый клиент из app.core.clients
 
 
 def _build_agenda_properties(
@@ -75,7 +64,7 @@ def find_agenda_by_hash(raw_hash: str) -> dict[str, Any] | None:
     Returns:
         Данные страницы если найдена, иначе None
     """
-    client = _create_client()
+    client = get_notion_http_client()
 
     try:
         payload = {
@@ -138,7 +127,7 @@ def create_agenda(
             logger.info(f"Agenda already exists for hash {raw_hash}, skipping creation")
             return str(existing["id"])
 
-        client = _create_client()
+        client = get_notion_http_client()
 
         try:
             properties = _build_agenda_properties(
@@ -191,7 +180,7 @@ def query_agendas_by_context(
         Список повесток
     """
     with timer("notion.query_agendas"):
-        client = _create_client()
+        client = get_notion_http_client()
 
         try:
             # Базовый фильтр по типу контекста
@@ -238,7 +227,7 @@ def get_agenda_statistics() -> dict[str, Any]:
     Returns:
         Словарь со статистикой
     """
-    client = _create_client()
+    client = get_notion_http_client()
 
     try:
         # Получаем все повестки

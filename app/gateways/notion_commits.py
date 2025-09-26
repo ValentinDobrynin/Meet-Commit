@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from app.core.clients import get_notion_http_client
 from app.core.metrics import MetricNames, timer, track_batch_operation
 from app.settings import settings
 
@@ -51,19 +52,6 @@ def _get_person_aliases(person_name: str) -> list[str]:
     except Exception as e:
         logger.error(f"Error reading people.json: {e}")
         return [person_name]
-
-
-def _create_client() -> httpx.Client:
-    """Создает новый HTTP клиент для Notion API."""
-    if not settings.notion_token or not settings.commits_db_id:
-        raise RuntimeError("Notion credentials missing: NOTION_TOKEN or COMMITS_DB_ID")
-
-    headers = {
-        "Authorization": f"Bearer {settings.notion_token}",
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json",
-    }
-    return httpx.Client(timeout=30, headers=headers)
 
 
 def _query_by_key(client: httpx.Client, key: str) -> str | None:
@@ -167,7 +155,7 @@ def upsert_commits(meeting_page_id: str, commits: list[dict]) -> dict[str, list[
 
     with timer(MetricNames.NOTION_UPSERT_COMMITS):
         created, updated = [], []
-        client = _create_client()
+        client = get_notion_http_client()
 
         try:
             logger.info(f"Processing {len(commits)} commits for meeting {meeting_page_id}")
@@ -249,7 +237,7 @@ def _query_commits(
         Ответ Notion API с results
     """
     with timer(MetricNames.NOTION_QUERY_COMMITS):
-        client = _create_client()
+        client = get_notion_http_client()
 
         try:
             payload: dict[str, Any] = {
@@ -604,7 +592,7 @@ def update_commit_status(commit_id: str, status: str) -> bool:
         True если обновление прошло успешно
     """
     with timer(MetricNames.NOTION_UPDATE_COMMIT_STATUS):
-        client = _create_client()
+        client = get_notion_http_client()
 
         try:
             url = f"{NOTION_API}/pages/{commit_id}"

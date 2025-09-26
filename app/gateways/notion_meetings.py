@@ -5,26 +5,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
-
-from app.settings import settings
+from app.core.clients import get_notion_http_client
 
 logger = logging.getLogger(__name__)
 
 NOTION_API = "https://api.notion.com/v1"
 
 
-def _create_client() -> httpx.Client:
-    """Создает новый HTTP клиент для Notion API."""
-    if not settings.notion_token or not settings.notion_db_meetings_id:
-        raise RuntimeError("Notion credentials missing: NOTION_TOKEN or NOTION_DB_MEETINGS_ID")
-
-    headers = {
-        "Authorization": f"Bearer {settings.notion_token}",
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json",
-    }
-    return httpx.Client(timeout=30, headers=headers)
+# Удалено: используем единый клиент из app.core.clients
 
 
 def _parse_rich_text(prop: dict | None) -> str:
@@ -76,7 +64,7 @@ def fetch_meeting_page(page_id: str) -> dict[str, Any]:
         f"{clean_page_id[16:20]}-{clean_page_id[20:32]}"
     )
 
-    client = _create_client()
+    client = get_notion_http_client()
 
     try:
         # Получаем страницу
@@ -134,7 +122,7 @@ def update_meeting_tags(page_id: str, tags: list[str]) -> bool:
         f"{clean_page_id[16:20]}-{clean_page_id[20:32]}"
     )
 
-    client = _create_client()
+    client = get_notion_http_client()
 
     try:
         # Подготавливаем properties для обновления

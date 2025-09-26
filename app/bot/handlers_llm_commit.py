@@ -13,7 +13,8 @@ from aiogram.types import Message
 
 from app.bot.formatters import format_commit_card
 from app.core.llm_commit_parse import parse_commit_text
-from app.gateways.notion_commits import _map_commit_page, upsert_commits
+from app.gateways.notion_commits import _map_commit_page
+from app.gateways.notion_commits_async import upsert_commits_async
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -45,21 +46,18 @@ async def _save_commit_to_notion(commit_data: dict) -> dict[str, Any]:
         # Создаем встречу для прямых коммитов
         meeting_page_id = await _create_direct_meeting()
 
-        # Сохраняем коммит в executor (синхронная функция)
-        result = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: upsert_commits(meeting_page_id, [commit_data])
-        )
+        # Сохраняем коммит асинхронно
+        result = await upsert_commits_async(meeting_page_id, [commit_data])
 
         logger.info(f"Saved LLM commit: {result}")
 
         # Получаем ID созданного коммита
         if result.get("created"):
             # Получаем полные данные коммита из Notion для форматирования
-            from notion_client import Client
-
+            from app.core.clients import get_notion_client
             from app.settings import settings
 
-            client = Client(auth=settings.notion_token)
+            client = get_notion_client()
             try:
                 response = client.databases.query(
                     database_id=settings.commits_db_id or "",
@@ -72,7 +70,8 @@ async def _save_commit_to_notion(commit_data: dict) -> dict[str, Any]:
                     return _map_commit_page(page)
 
             finally:
-                client.close()
+                # Notion SDK клиент не требует явного закрытия
+                pass
 
         # Fallback: возвращаем исходные данные
         return commit_data
@@ -115,7 +114,7 @@ async def llm_commit_handler(message: Message) -> None:
         )
 
         try:
-            # 1. Парсинг через LLM в executor (синхронная функция)
+            # 1. Парсинг через LLM в executor (пока синхронный)
             commit_data = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: parse_commit_text(text, user_name)
             )

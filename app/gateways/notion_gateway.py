@@ -1,39 +1,14 @@
 import logging
-import os
-from functools import lru_cache
 from typing import Any
 
-from pydantic import Field
-from pydantic_settings import BaseSettings
-
+from app.core.clients import get_notion_client
 from app.core.metrics import MetricNames, inc, timer
 from app.settings import settings as app_settings
 
 logger = logging.getLogger(__name__)
 
 
-class Settings(BaseSettings):
-    notion_token: str = Field(..., description="Notion API token")
-    notion_db_meetings_id: str = Field(..., description="Notion database ID for meetings")
-
-    model_config = {"env_file": ".env", "extra": "ignore"}
-
-
-@lru_cache(maxsize=1)
-def _settings() -> Settings:
-    """Получает настройки с кэшированием."""
-    return Settings(
-        notion_token=os.environ.get("NOTION_TOKEN", ""),
-        notion_db_meetings_id=os.environ.get("NOTION_DB_MEETINGS_ID", ""),
-    )
-
-
-@lru_cache(maxsize=1)
-def _client():
-    """Получает Notion клиент с кэшированием."""
-    from notion_client import Client
-
-    return Client(auth=_settings().notion_token)
+# Удалено: используем единые клиенты и настройки из app.core.clients и app.settings
 
 
 # -------- helpers --------
@@ -81,8 +56,10 @@ def upsert_meeting(payload: dict[str, Any]) -> str:
     """
     with timer(MetricNames.NOTION_CREATE_MEETING):
         try:
-            client = _client()
-            db_id = _settings().notion_db_meetings_id
+            client = get_notion_client()
+            db_id = app_settings.notion_db_meetings_id
+            if not db_id:
+                raise RuntimeError("NOTION_DB_MEETINGS_ID не настроен")
             raw_hash = payload.get("raw_hash", "")
 
             title = payload.get("title", "Untitled Meeting")
@@ -98,8 +75,9 @@ def upsert_meeting(payload: dict[str, Any]) -> str:
                         page_size=1,
                     )
 
-                    if response.get("results"):
-                        existing_page = response["results"][0]
+                    results = response.get("results", [])  # type: ignore[union-attr]
+                    if results:
+                        existing_page = results[0]
                         existing_page_id = existing_page["id"]
                         existing_url = existing_page.get("url", "")
 
@@ -158,14 +136,14 @@ def upsert_meeting(payload: dict[str, Any]) -> str:
 
             # Создаем новую запись
             properties = _props(payload)
-            page = client.pages.create(
+            create_response = client.pages.create(
                 parent={"database_id": db_id},
                 properties=properties,
             )
-            page_id = page["id"]
+            page_id = create_response["id"]  # type: ignore[index]
 
-            page = client.pages.retrieve(page_id)
-            url = str(page["url"])
+            page_response = client.pages.retrieve(page_id)
+            url = str(page_response["url"])  # type: ignore[index]
 
             logger.info(f"Meeting page created successfully: {url}")
             return url

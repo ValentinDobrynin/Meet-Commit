@@ -9,8 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
-
+from app.core.clients import get_notion_http_client
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -18,17 +17,7 @@ logger = logging.getLogger(__name__)
 NOTION_API = "https://api.notion.com/v1"
 
 
-def _create_client() -> httpx.Client:
-    """Создает новый HTTP клиент для Notion API."""
-    if not settings.notion_token or not settings.notion_db_tag_catalog_id:
-        raise RuntimeError("Notion credentials missing: NOTION_TOKEN or NOTION_DB_TAG_CATALOG_ID")
-
-    headers = {
-        "Authorization": f"Bearer {settings.notion_token}",
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json",
-    }
-    return httpx.Client(timeout=30, headers=headers)
+# Удалено: используем единый клиент из app.core.clients
 
 
 def _parse_rich_text(prop: dict | None) -> str:
@@ -93,7 +82,7 @@ def fetch_tag_catalog() -> list[dict[str, Any]]:
     if not settings.notion_sync_enabled:
         raise RuntimeError("Notion sync is disabled in settings")
 
-    client = _create_client()
+    client = get_notion_http_client()
 
     try:
         # Запрашиваем только активные правила
@@ -204,7 +193,7 @@ def validate_tag_catalog_access() -> bool:
         return False
 
     try:
-        client = _create_client()
+        client = get_notion_http_client()
 
         # Простой запрос для проверки доступа
         response = client.get(f"{NOTION_API}/databases/{settings.notion_db_tag_catalog_id}")
@@ -235,7 +224,7 @@ def get_tag_catalog_info() -> dict[str, Any]:
         return {"accessible": False, "error": "Tag Catalog not accessible or sync disabled"}
 
     try:
-        client = _create_client()
+        client = get_notion_http_client()
 
         response = client.get(f"{NOTION_API}/databases/{settings.notion_db_tag_catalog_id}")
         response.raise_for_status()
