@@ -62,9 +62,9 @@ class AdaptiveLimits(NamedTuple):
 
 # Профили лимитов для разных устройств
 DEVICE_LIMITS = {
-    "mobile": AdaptiveLimits(title=45, description=70, attendees=3, tags=2, id_length=6),
-    "tablet": AdaptiveLimits(title=60, description=90, attendees=4, tags=3, id_length=8),
-    "desktop": AdaptiveLimits(title=80, description=120, attendees=6, tags=5, id_length=12),
+    "mobile": AdaptiveLimits(title=100, description=300, attendees=3, tags=3, id_length=6),
+    "tablet": AdaptiveLimits(title=100, description=300, attendees=4, tags=4, id_length=8),
+    "desktop": AdaptiveLimits(title=100, description=300, attendees=6, tags=5, id_length=12),
 }
 
 

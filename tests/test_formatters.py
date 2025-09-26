@@ -139,10 +139,10 @@ class TestMeetingCard:
 
         result = format_meeting_card(meeting)
 
-        # Проверяем, что название обрезано (60 символов лимит)
-        assert len(meeting["Name"]) > 60  # Исходное название длинное
+        # Проверяем форматирование (название 81 символ < 100 лимита)
+        assert "Очень длинное" in result  # Название не обрезается
         assert "+2" in result  # Дополнительные участники
-        assert "+1" in result or "Mobile" not in result  # Обрезание тегов
+        # С новыми лимитами все теги помещаются
 
 
 class TestCommitCard:
@@ -313,10 +313,10 @@ class TestAdaptiveFormatting:
         from app.bot.formatters import _get_adaptive_limits
 
         limits = _get_adaptive_limits("mobile")
-        assert limits.title == 45
-        assert limits.description == 70
+        assert limits.title == 100
+        assert limits.description == 300
         assert limits.attendees == 3
-        assert limits.tags == 2
+        assert limits.tags == 3
         assert limits.id_length == 6
 
     def test_adaptive_limits_desktop(self):
@@ -324,8 +324,8 @@ class TestAdaptiveFormatting:
         from app.bot.formatters import _get_adaptive_limits
 
         limits = _get_adaptive_limits("desktop")
-        assert limits.title == 80
-        assert limits.description == 120
+        assert limits.title == 100
+        assert limits.description == 300
         assert limits.attendees == 6
         assert limits.tags == 5
         assert limits.id_length == 12
@@ -363,7 +363,7 @@ class TestAdaptiveFormatting:
         assert "Person4" in desktop_result  # Desktop показывает 6
 
         # Mobile показывает меньше тегов
-        assert "+3" in mobile_result  # Mobile показывает 2 тега + 3 дополнительных
+        assert "+2" in mobile_result  # Mobile показывает 3 тега + 2 дополнительных
         assert "Planning" in desktop_result  # Desktop показывает больше тегов
 
     def test_commit_card_adaptive_text_truncation(self):
@@ -398,8 +398,8 @@ class TestAdaptiveFormatting:
         assert "desktop" in demo_results
 
         # Каждый результат должен содержать информацию об устройстве
-        assert "Mobile (45x70)" in demo_results["mobile"]
-        assert "Desktop (80x120)" in demo_results["desktop"]
+        assert "Mobile (100x300)" in demo_results["mobile"]
+        assert "Desktop (100x300)" in demo_results["desktop"]
 
 
 class TestIntegration:

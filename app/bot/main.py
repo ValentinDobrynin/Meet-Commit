@@ -14,6 +14,7 @@ from .handlers_admin import router as admin_router
 from .handlers_agenda import router as agenda_router
 from .handlers_direct_commit import router as direct_commit_router
 from .handlers_inline import router as inline_router
+from .handlers_llm_commit import router as llm_commit_router
 from .handlers_people import router as people_router
 from .handlers_queries import router as queries_router
 from .handlers_tags_review import router as tags_review_router
@@ -81,6 +82,7 @@ bot, dp = build_bot(TELEGRAM_TOKEN, MemoryStorage())
 # Специализированные роутеры должны быть зарегистрированы ПЕРЕД основным
 dp.include_router(tags_review_router)  # Приоритет для FSM состояний
 dp.include_router(direct_commit_router)  # Прямые коммиты с FSM
+dp.include_router(llm_commit_router)  # LLM коммиты (без FSM)
 dp.include_router(agenda_router)  # Система повесток с FSM
 dp.include_router(queries_router)  # Команды запросов к коммитам
 dp.include_router(inline_router)

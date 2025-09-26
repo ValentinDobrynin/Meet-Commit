@@ -232,6 +232,7 @@ class MetricNames:
     # LLM операции
     LLM_SUMMARIZE = "llm.summarize"
     LLM_EXTRACT_COMMITS = "llm.extract_commits"
+    LLM_COMMIT_PARSE = "llm.commit_parse"
 
     # Notion операции
     NOTION_CREATE_MEETING = "notion.create_meeting"
