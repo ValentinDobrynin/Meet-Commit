@@ -28,20 +28,20 @@ class TestNotionClients:
     def test_get_notion_client_success(self, mock_settings):
         """Тест успешного создания Notion SDK клиента."""
         mock_settings.notion_token = "test_token"
-        
+
         clear_clients_cache()
         client = get_notion_client()
-        
+
         assert isinstance(client, NotionClient)
 
     @patch("app.core.clients.settings")
     def test_get_notion_http_client_success(self, mock_settings):
         """Тест успешного создания HTTP клиента."""
         mock_settings.notion_token = "test_token"
-        
+
         clear_clients_cache()
         client = get_notion_http_client()
-        
+
         assert hasattr(client, "headers")
         assert "Authorization" in client.headers
 
@@ -53,20 +53,20 @@ class TestOpenAIClients:
     def test_get_openai_client_success(self, mock_settings):
         """Тест успешного создания OpenAI клиента."""
         mock_settings.openai_api_key = "test_key"
-        
+
         clear_clients_cache()
         client = get_openai_client()
-        
+
         assert isinstance(client, OpenAI)
 
     @patch("app.core.clients.settings")
     def test_get_openai_parse_client(self, mock_settings):
         """Тест специализированного клиента для парсинга."""
         mock_settings.openai_api_key = "test_key"
-        
+
         clear_clients_cache()
         client = get_openai_parse_client()
-        
+
         assert isinstance(client, OpenAI)
 
     @pytest.mark.asyncio
@@ -74,10 +74,11 @@ class TestOpenAIClients:
     async def test_get_async_openai_client(self, mock_settings):
         """Тест асинхронного OpenAI клиента."""
         mock_settings.openai_api_key = "test_key"
-        
+
         from app.core.clients import get_async_openai_client
+
         client = await get_async_openai_client()
-        
+
         assert isinstance(client, AsyncOpenAI)
 
 
@@ -94,9 +95,9 @@ class TestUtilities:
         """Тест получения информации о клиентах."""
         mock_settings.notion_token = "token"
         mock_settings.openai_api_key = "key"
-        
+
         info = get_clients_info()
-        
+
         assert "notion" in info
         assert "openai" in info
 

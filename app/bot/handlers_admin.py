@@ -12,6 +12,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from app.core.clients import clear_clients_cache, get_clients_info
 from app.core.metrics import snapshot as get_metrics_snapshot
 from app.core.tagger_v1_scored import validate_rules
 from app.core.tags import clear_cache, get_tagging_stats, reload_tags_rules, tag_text_scored
@@ -554,14 +555,23 @@ async def admin_help_handler(message: Message) -> None:
         "🔍 <code>/retag &lt;meeting_id&gt; dry-run</code> - Показать diff тегов\n"
         "♻️ <code>/retag &lt;meeting_id&gt;</code> - Пересчитать и обновить теги\n"
         "🏷️ <code>/review_tags &lt;meeting_id&gt;</code> - Интерактивное ревью тегов\n\n"
+        "⚡ <b>Производительность клиентов:</b>\n"
+        "📊 <code>/clients_stats</code> - Статистика клиентов и connection pooling\n"
+        "🧹 <code>/clients_cleanup</code> - Очистка кэша Notion SDK клиентов\n\n"
         "🔄 <b>Notion синхронизация:</b>\n"
         "📥 <code>/sync_tags</code> - Синхронизировать правила из Notion Tag Catalog\n"
         "🔍 <code>/sync_tags dry-run</code> - Проверить синхронизацию без применения\n"
         "📊 <code>/sync_status</code> - Статус последней синхронизации\n\n"
         "👥 <b>Управление людьми:</b>\n"
-        "🧩 <code>/people_miner</code> - Интерактивная верификация кандидатов\n"
+        "🧩 <code>/people_miner</code> - Интерактивная верификация кандидатов (v1)\n"
+        "🆕 <code>/people_miner2 [freq|date]</code> - People Miner v2 с улучшенным UX\n"
         "📊 <code>/people_stats</code> - Статистика людей и кандидатов\n"
-        "🔄 <code>/people_reset</code> - Сбросить состояние People Miner\n\n"
+        "📈 <code>/people_stats_v2</code> - Подробная статистика People Miner v2\n"
+        "📈 <code>/people_activity</code> - Рейтинг активности людей в коммитах\n"
+        "🔄 <code>/people_reset</code> - Сбросить состояние People Miner v1\n"
+        "🧹 <code>/people_clear_v2</code> - Очистить кандидатов People Miner v2\n\n"
+        "📋 <b>Статистика повесток:</b>\n"
+        "📊 <code>/agenda_stats</code> - Статистика использования agenda системы\n\n"
         "🎨 <b>Форматирование:</b>\n"
         "📱 <code>/adaptive_demo</code> - Демонстрация адаптивного форматирования\n"
         "📱 <code>/adaptive_demo mobile</code> - Показать форматирование для мобильного\n\n"
@@ -615,6 +625,115 @@ async def admin_config_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Failed to get admin config: {e}")
         await message.answer(f"❌ <b>Ошибка получения настроек</b>\n\n<code>{str(e)}</code>")
+
+
+@router.message(F.text == "/clients_stats")
+async def clients_stats_handler(message: Message) -> None:
+    """Показывает статистику кэширования HTTP клиентов."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        # Получаем информацию о клиентах
+        clients_info = get_clients_info()
+
+        # Статистика кэша HTTP клиентов
+        http_cache = clients_info["cache_info"]["notion_http_client"]
+
+        stats_text = "⚡ <b>Статистика клиентов</b>\n\n" "📊 <b>HTTP клиенты:</b>\n"
+
+        if isinstance(http_cache, dict):
+            stats_text += (
+                f"   🎯 Hit ratio: {http_cache.get('hit_ratio', 0):.1%}\n"
+                f"   ✅ Hits: {http_cache.get('hits', 0)}\n"
+                f"   ❌ Misses: {http_cache.get('misses', 0)}\n"
+                f"   📦 Размер: {http_cache.get('size', 0)}/{http_cache.get('maxsize', 0)}\n"
+                f"   ⏰ TTL: {http_cache.get('ttl_seconds', 0)}s\n\n"
+            )
+
+            # Детали записей в кэше
+            entries = http_cache.get("entries", [])
+            if entries:
+                stats_text += f"📋 <b>Записи в кэше ({len(entries)}):</b>\n"
+                for entry in entries[:3]:  # Показываем первые 3
+                    stats_text += (
+                        f"   • {entry['key']}: возраст {entry['age_seconds']:.1f}s, "
+                        f"доступов {entry['access_count']}, "
+                        f"истекает через {entry['expires_in']:.1f}s\n"
+                    )
+                if len(entries) > 3:
+                    stats_text += f"   ... и еще {len(entries) - 3}\n"
+        else:
+            stats_text += f"   ℹ️ {http_cache}\n"
+
+        # Информация о Notion SDK клиентах (они кэшируются безопасно)
+        notion_cache = clients_info["cache_info"]["notion_client"]
+        if isinstance(notion_cache, dict):
+            stats_text += (
+                f"\n🏗️ <b>Notion SDK клиенты:</b>\n"
+                f"   🎯 Hit ratio: {notion_cache.get('hit_ratio', 0):.1%}\n"
+                f"   ✅ Hits: {notion_cache.get('hits', 0)}\n"
+                f"   ❌ Misses: {notion_cache.get('misses', 0)}\n"
+                f"   📦 Размер: {notion_cache.get('currsize', 0)}/{notion_cache.get('maxsize', 0)}\n"
+            )
+
+        await message.answer(stats_text, parse_mode="HTML")
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} requested clients stats")
+
+    except Exception as e:
+        logger.error(f"Error in clients_stats_handler: {e}")
+        await message.answer(
+            f"❌ <b>Ошибка получения статистики клиентов</b>\n\n<code>{str(e)}</code>"
+        )
+
+
+@router.message(F.text == "/clients_cleanup")
+async def clients_cleanup_handler(message: Message) -> None:
+    """Принудительная очистка кэша клиентов."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        # Получаем статистику до очистки
+        clients_info_before = get_clients_info()
+        http_cache_before = clients_info_before["cache_info"]["notion_http_client"]
+
+        before_size = 0
+        if isinstance(http_cache_before, dict):
+            before_size = http_cache_before.get("size", 0)
+
+        # Выполняем очистку
+        clear_clients_cache()
+
+        # Получаем статистику после очистки
+        clients_info_after = get_clients_info()
+        http_cache_after = clients_info_after["cache_info"]["notion_http_client"]
+
+        after_size = 0
+        if isinstance(http_cache_after, dict):
+            after_size = http_cache_after.get("size", 0)
+
+        cleanup_text = (
+            "🧹 <b>Очистка кэша клиентов завершена</b>\n\n"
+            "📊 <b>Результат:</b>\n"
+            "   💾 Notion SDK кэш очищен\n"
+            "   🔄 HTTP клиенты: создаются новые (не кэшируются)\n"
+            "   🌐 Connection pooling: TCP соединения переиспользуются\n\n"
+            "✅ Система готова к работе\n"
+        )
+
+        await message.answer(cleanup_text, parse_mode="HTML")
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} performed clients cleanup: {before_size} → {after_size}")
+
+    except Exception as e:
+        logger.error(f"Error in clients_cleanup_handler: {e}")
+        await message.answer(f"❌ <b>Ошибка очистки кэша клиентов</b>\n\n<code>{str(e)}</code>")
 
 
 @router.message(F.text.regexp(r"^/review_tags\s+([0-9a-f\-]{10,})$"))
@@ -908,4 +1027,117 @@ async def adaptive_demo_handler(message: Message) -> None:
         logger.error(f"Error in adaptive_demo_handler: {e}")
         await message.answer(
             f"❌ <b>Ошибка демонстрации</b>\n\n<code>{str(e)}</code>", parse_mode="HTML"
+        )
+
+
+@router.message(F.text == "/people_activity")
+async def people_activity_handler(message: Message) -> None:
+    """Показывает рейтинг активности людей в коммитах."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        from app.core.people_activity import (
+            get_cache_info,
+            get_people_activity_stats,
+            get_top_people_by_activity,
+        )
+
+        # Получаем статистику активности
+        people_stats = get_people_activity_stats()
+        top_people = get_top_people_by_activity(min_count=1, max_count=20, min_score=0)
+        cache_info = get_cache_info()
+
+        activity_text = (
+            f"📈 <b>Рейтинг активности людей</b>\n\n"
+            f"📊 <b>Общая статистика:</b>\n"
+            f"   👥 Всего людей: {len(people_stats)}\n"
+            f"   🏆 В топе: {len(top_people)}\n"
+            f"   💾 Кэш: {cache_info.get('hits', 0)} hits, {cache_info.get('misses', 0)} misses\n\n"
+        )
+
+        if top_people:
+            activity_text += "🏆 <b>Топ-10 по активности:</b>\n"
+            for i, person in enumerate(top_people[:10], 1):
+                stats = people_stats.get(person, {"assignee": 0, "from_person": 0})
+                assignee_count = stats["assignee"]
+                from_person_count = stats["from_person"]
+                total = assignee_count + from_person_count
+
+                activity_text += (
+                    f"   {i:2}. <b>{person}</b>: {total} "
+                    f"(👤{assignee_count} + 📝{from_person_count})\n"
+                )
+        else:
+            activity_text += "ℹ️ Нет данных об активности людей"
+
+        await message.answer(activity_text, parse_mode="HTML")
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} requested people activity stats")
+
+    except Exception as e:
+        logger.error(f"Error in people_activity_handler: {e}")
+        await message.answer(
+            f"❌ <b>Ошибка получения статистики активности</b>\n\n<code>{str(e)}</code>",
+            parse_mode="HTML",
+        )
+
+
+@router.message(F.text == "/agenda_stats")
+async def agenda_stats_handler(message: Message) -> None:
+    """Показывает статистику использования agenda системы."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        from app.core.metrics import snapshot
+        from app.core.people_activity import (
+            get_other_people,
+            get_people_activity_stats,
+            get_top_people_by_activity,
+        )
+
+        # Получаем данные для статистики
+        people_stats = get_people_activity_stats()
+        top_people = get_top_people_by_activity()
+        other_people = get_other_people(exclude_top=top_people)
+
+        # Получаем метрики использования agenda
+        metrics = snapshot()
+        agenda_metrics = {k: v for k, v in metrics.counters.items() if "agenda" in k.lower()}
+
+        stats_text = (
+            f"📊 <b>Статистика Agenda системы</b>\n\n"
+            f"👥 <b>Люди в системе:</b>\n"
+            f"   🏆 Топ людей: {len(top_people)}\n"
+            f"   👥 Other people: {len(other_people)}\n"
+            f"   📊 Всего с активностью: {len(people_stats)}\n\n"
+        )
+
+        if top_people:
+            stats_text += f"🏆 <b>Текущий топ-{len(top_people)}:</b>\n"
+            for i, person in enumerate(top_people, 1):
+                stats_text += f"   {i}. {person}\n"
+            stats_text += "\n"
+
+        if agenda_metrics:
+            stats_text += "📈 <b>Метрики использования:</b>\n"
+            for metric, count in sorted(agenda_metrics.items()):
+                stats_text += f"   • {metric}: {count}\n"
+        else:
+            stats_text += "ℹ️ Нет метрик использования agenda\n"
+
+        await message.answer(stats_text, parse_mode="HTML")
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} requested agenda stats")
+
+    except Exception as e:
+        logger.error(f"Error in agenda_stats_handler: {e}")
+        await message.answer(
+            f"❌ <b>Ошибка получения статистики agenda</b>\n\n<code>{str(e)}</code>",
+            parse_mode="HTML",
         )

@@ -22,7 +22,6 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.bot.formatters import format_agenda_card
 from app.core import agenda_builder
-from app.core.people_store import load_people
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -53,28 +52,70 @@ def _build_main_menu_keyboard() -> InlineKeyboardMarkup:
 
 
 def _build_people_keyboard() -> InlineKeyboardMarkup:
-    """Создание клавиатуры выбора людей."""
-    people_list = load_people()
-    buttons = []
+    """Создание клавиатуры выбора людей на основе активности в Commits."""
+    from app.core.people_activity import get_top_people_by_activity
 
-    # Добавляем популярных людей (исключаем себя, для себя используется /mine)
-    popular_people = ["Sasha Katanov", "Ivan Petrov"]  # Можно настроить
+    try:
+        # Получаем топ людей по активности (3-8 адаптивно)
+        top_people = get_top_people_by_activity(min_count=3, max_count=8, min_score=1.0)
 
-    # Создаем множество имен из списка людей
-    people_names = {person.get("name_en", "") for person in people_list if person.get("name_en")}
+        logger.info(f"Building people keyboard with {len(top_people)} top people")
 
-    for person in popular_people:
-        if person in people_names:
+        buttons = []
+
+        # Добавляем топ людей (по 2 в ряд для компактности)
+        for i in range(0, len(top_people), 2):
+            row = []
+            for j in range(i, min(i + 2, len(top_people))):
+                person = top_people[j]
+                row.append(
+                    InlineKeyboardButton(
+                        text=f"👤 {person}", callback_data=f"agenda:person:{person}"
+                    )
+                )
+            if row:
+                buttons.append(row)
+
+        # Добавляем кнопку "Other people" если есть еще люди
+        from app.core.people_activity import get_other_people
+
+        other_people = get_other_people(exclude_top=top_people)
+
+        if other_people:
             buttons.append(
-                [InlineKeyboardButton(text=f"👤 {person}", callback_data=f"agenda:person:{person}")]
+                [
+                    InlineKeyboardButton(
+                        text="👥 Other people...", callback_data="agenda:people:other"
+                    )
+                ]
             )
 
-    buttons.extend(
-        [
-            [InlineKeyboardButton(text="✍️ Ввести вручную", callback_data="agenda:person:manual")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="agenda:back")],
-        ]
-    )
+        # Кнопка возврата
+        buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="agenda:back")])
+
+        return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    except Exception as e:
+        logger.error(f"Error building people keyboard: {e}")
+        # Fallback - простая клавиатура
+        return _build_fallback_people_keyboard()
+
+
+def _build_fallback_people_keyboard() -> InlineKeyboardMarkup:
+    """Fallback клавиатура людей если нет данных активности."""
+    from app.core.people_activity import get_fallback_top_people
+
+    fallback_people = get_fallback_top_people()
+    buttons = []
+
+    # Добавляем fallback людей
+    for person in fallback_people:
+        buttons.append(
+            [InlineKeyboardButton(text=f"👤 {person}", callback_data=f"agenda:person:{person}")]
+        )
+
+    # Кнопка возврата
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="agenda:back")])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -239,23 +280,114 @@ async def callback_person_selected(callback: CallbackQuery) -> None:
     callback_data = callback.data or ""
     person_data = callback_data.split(":", 2)[2]
 
+    # Убрали ручной ввод - теперь только кнопки
     if person_data == "manual":
-        await callback.message.edit_text(  # type: ignore[union-attr]
-            "👤 <b>Персональная повестка</b>\n\n"
-            "Введите имя человека (на английском):\n"
-            "<code>Sasha Katanov</code>\n\n"
-            "💡 <i>Или отправьте /cancel для отмены</i>",
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 Назад", callback_data="agenda:type:person")]
-                ]
-            ),
+        await callback.answer(
+            "❌ Ручной ввод временно отключен. Выберите из списка.", show_alert=True
         )
-        await callback.answer()
         return
 
     await _generate_person_agenda(callback.message, person_data)  # type: ignore[arg-type]
+    await callback.answer()
+
+
+@router.callback_query(F.data == "agenda:people:other")
+async def callback_show_other_people(callback: CallbackQuery) -> None:
+    """Показать других людей (страница 1)."""
+    await _show_other_people_page(callback, page=0)
+
+
+@router.callback_query(F.data.startswith("agenda:people:other:page:"))
+async def callback_other_people_page(callback: CallbackQuery) -> None:
+    """Показать конкретную страницу других людей."""
+    try:
+        page = int((callback.data or "").split(":")[-1])
+        await _show_other_people_page(callback, page=page)
+    except (ValueError, IndexError):
+        await callback.answer("❌ Ошибка в номере страницы", show_alert=True)
+
+
+async def _show_other_people_page(callback: CallbackQuery, page: int = 0) -> None:
+    """Показывает страницу других людей."""
+    try:
+        from app.core.people_activity import get_other_people, get_top_people_by_activity
+
+        # Получаем топ людей для исключения
+        top_people = get_top_people_by_activity()
+        other_people = get_other_people(exclude_top=top_people)
+
+        if not other_people:
+            await callback.answer("❌ Нет других людей с активностью", show_alert=True)
+            return
+
+        # Пагинация
+        per_page = 8
+        total_pages = (len(other_people) + per_page - 1) // per_page
+        page = max(0, min(page, total_pages - 1))  # Ограничиваем диапазон
+
+        start_idx = page * per_page
+        end_idx = start_idx + per_page
+        page_people = other_people[start_idx:end_idx]
+
+        # Создаем клавиатуру
+        buttons = []
+
+        # Добавляем людей этой страницы (по 2 в ряд)
+        for i in range(0, len(page_people), 2):
+            row = []
+            for j in range(i, min(i + 2, len(page_people))):
+                person = page_people[j]
+                row.append(
+                    InlineKeyboardButton(
+                        text=f"👤 {person}", callback_data=f"agenda:person:{person}"
+                    )
+                )
+            if row:
+                buttons.append(row)
+
+        # Навигация
+        nav_row = []
+        if page > 0:
+            nav_row.append(
+                InlineKeyboardButton(
+                    text="← Назад", callback_data=f"agenda:people:other:page:{page-1}"
+                )
+            )
+
+        nav_row.append(InlineKeyboardButton(text=f"{page+1}/{total_pages}", callback_data="noop"))
+
+        if page < total_pages - 1:
+            nav_row.append(
+                InlineKeyboardButton(
+                    text="Вперед →", callback_data=f"agenda:people:other:page:{page+1}"
+                )
+            )
+
+        buttons.append(nav_row)
+
+        # Кнопка возврата к топу
+        buttons.append([InlineKeyboardButton(text="🔙 К топу", callback_data="agenda:type:person")])
+
+        # Обновляем сообщение
+        text = (
+            f"👥 <b>Other people</b> (страница {page+1}/{total_pages})\n\n"
+            f"Выберите человека для персональной повестки:\n"
+            f"<i>Показано {len(page_people)} из {len(other_people)} людей</i>"
+        )
+
+        await callback.message.edit_text(  # type: ignore[union-attr]
+            text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error showing other people page {page}: {e}")
+        await callback.answer("❌ Ошибка при загрузке списка людей", show_alert=True)
+
+
+@router.callback_query(F.data == "noop")
+async def callback_noop(callback: CallbackQuery) -> None:
+    """Обработчик для неактивных кнопок (индикаторы страниц)."""
     await callback.answer()
 
 
@@ -387,7 +519,7 @@ async def callback_refresh_agenda(callback: CallbackQuery) -> None:
 # Обработчики ввода текста в состояниях FSM
 
 
-@router.message(AgendaStates.waiting_meeting_id)
+@router.message(AgendaStates.waiting_meeting_id, F.text)
 async def handle_meeting_id_input(message: Message, state: FSMContext) -> None:
     """Обработка ввода ID встречи."""
     await state.clear()
@@ -400,9 +532,14 @@ async def handle_meeting_id_input(message: Message, state: FSMContext) -> None:
     await _generate_meeting_agenda(message, meeting_id)
 
 
-@router.message(AgendaStates.waiting_person_name)
+@router.message(AgendaStates.waiting_person_name, F.text)
 async def handle_person_name_input(message: Message, state: FSMContext) -> None:
     """Обработка ввода имени человека."""
+    user_id = message.from_user.id if message.from_user else "unknown"
+    logger.info(
+        f"Agenda FSM: User {user_id} entered person name: '{message.text}' in state waiting_person_name"
+    )
+
     await state.clear()
 
     person_name = message.text.strip() if message.text else ""
@@ -413,7 +550,7 @@ async def handle_person_name_input(message: Message, state: FSMContext) -> None:
     await _generate_person_agenda(message, person_name)
 
 
-@router.message(AgendaStates.waiting_tag_name)
+@router.message(AgendaStates.waiting_tag_name, F.text)
 async def handle_tag_name_input(message: Message, state: FSMContext) -> None:
     """Обработка ввода тега."""
     await state.clear()

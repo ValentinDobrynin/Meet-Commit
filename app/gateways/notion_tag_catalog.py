@@ -10,6 +10,14 @@ import logging
 from typing import Any
 
 from app.core.clients import get_notion_http_client
+from app.gateways.error_handling import notion_update, notion_validation
+from app.gateways.notion_parsers import (
+    parse_checkbox,
+    parse_number,
+    parse_rich_text,
+    parse_select,
+    parse_title,
+)
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -17,58 +25,10 @@ logger = logging.getLogger(__name__)
 NOTION_API = "https://api.notion.com/v1"
 
 
-# Удалено: используем единый клиент из app.core.clients
+# Используем общие парсеры из notion_parsers.py
 
 
-def _parse_rich_text(prop: dict | None) -> str:
-    """Парсит Notion rich_text property."""
-    if not prop or not prop.get("rich_text"):
-        return ""
-
-    # Собираем текст из всех блоков
-    text_parts = []
-    for block in prop["rich_text"]:
-        if block.get("text", {}).get("content"):
-            text_parts.append(block["text"]["content"])
-
-    return "\n".join(text_parts)
-
-
-def _parse_select(prop: dict | None) -> str:
-    """Парсит Notion select property."""
-    if not prop or not prop.get("select"):
-        return ""
-    return prop["select"].get("name", "")
-
-
-def _parse_number(prop: dict | None) -> float:
-    """Парсит Notion number property."""
-    if not prop or prop.get("number") is None:
-        return 1.0
-    return float(prop["number"])
-
-
-def _parse_checkbox(prop: dict | None) -> bool:
-    """Парсит Notion checkbox property."""
-    if not prop:
-        return False
-    return bool(prop.get("checkbox", False))
-
-
-def _parse_title(prop: dict | None) -> str:
-    """Парсит Notion title property."""
-    if not prop or not prop.get("title"):
-        return ""
-
-    # Собираем текст из всех блоков title
-    text_parts = []
-    for block in prop["title"]:
-        if block.get("text", {}).get("content"):
-            text_parts.append(block["text"]["content"])
-
-    return "".join(text_parts)
-
-
+@notion_update("fetch_tag_catalog")  # Strict handling для критичных данных
 def fetch_tag_catalog() -> list[dict[str, Any]]:
     """
     Скачивает все активные правила из базы Tag Catalog в Notion.
@@ -111,13 +71,13 @@ def fetch_tag_catalog() -> list[dict[str, Any]]:
             try:
                 props = row.get("properties", {})
 
-                # Парсим основные поля
-                name = _parse_title(props.get("Name"))
-                kind = _parse_select(props.get("Kind"))
-                patterns_text = _parse_rich_text(props.get("Pattern(s)"))
-                exclude_text = _parse_rich_text(props.get("Exclude"))
-                weight = _parse_number(props.get("Weight"))
-                active = _parse_checkbox(props.get("Active"))
+                # Парсим основные поля с помощью общих парсеров
+                name = parse_title(props.get("Name"))
+                kind = parse_select(props.get("Kind"))
+                patterns_text = parse_rich_text(props.get("Pattern(s)"))
+                exclude_text = parse_rich_text(props.get("Exclude"))
+                weight = parse_number(props.get("Weight"))
+                active = parse_checkbox(props.get("Active"))
 
                 if not name or not kind or not patterns_text:
                     logger.warning(f"Skipping incomplete rule: name='{name}', kind='{kind}'")
@@ -179,6 +139,7 @@ def fetch_tag_catalog() -> list[dict[str, Any]]:
         client.close()
 
 
+@notion_validation("validate_tag_catalog_access")  # Graceful fallback на False
 def validate_tag_catalog_access() -> bool:
     """
     Проверяет доступность базы Tag Catalog.
@@ -213,6 +174,7 @@ def validate_tag_catalog_access() -> bool:
             client.close()
 
 
+@notion_validation("get_tag_catalog_info")  # Graceful fallback с error info
 def get_tag_catalog_info() -> dict[str, Any]:
     """
     Получает информацию о базе Tag Catalog.

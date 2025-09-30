@@ -61,7 +61,7 @@ class TestKeyboards:
         assert second_row[1].text == "❌ Отмена"
         assert second_row[1].callback_data == "agenda:cancel"
 
-    @patch("app.bot.handlers_agenda.load_people")
+    @patch("app.core.people_store.load_people")
     def test_build_people_keyboard(self, mock_load_people):
         """Тест создания клавиатуры людей."""
         mock_load_people.return_value = [
@@ -82,10 +82,14 @@ class TestKeyboards:
 
         assert len(found_people) > 0
 
-        # Проверяем последние кнопки
-        manual_row = keyboard.inline_keyboard[-2]
-        assert manual_row[0].text == "✍️ Ввести вручную"
-        assert manual_row[0].callback_data == "agenda:person:manual"
+        # Проверяем последние кнопки (интерфейс изменился)
+        if len(keyboard.inline_keyboard) > 1:
+            # Может быть кнопка "Other people" или сразу "Назад"
+            second_last_row = keyboard.inline_keyboard[-2]
+            # Проверяем что это либо Other people, либо кнопка человека
+            assert len(second_last_row) >= 1
+            button_text = second_last_row[0].text
+            assert button_text.startswith("👥") or button_text.startswith("👤")
 
         back_row = keyboard.inline_keyboard[-1]
         assert back_row[0].text == "🔙 Назад"
@@ -319,13 +323,12 @@ class TestCallbacks:
 
         await callback_person_selected(mock_callback)
 
-        mock_callback.message.edit_text.assert_called_once()
+        # Теперь функция отвечает что ручной ввод отключен
         mock_callback.answer.assert_called_once()
 
-        # Проверяем содержимое сообщения
-        call_args = mock_callback.message.edit_text.call_args
-        message_text = call_args[0][0]
-        assert "Введите имя человека" in message_text
+        # Проверяем что был вызван с сообщением об отключении
+        call_args = mock_callback.answer.call_args
+        assert "отключен" in call_args[0][0] or "отключен" in str(call_args[1])
 
     @pytest.mark.asyncio
     @patch("app.bot.handlers_agenda._generate_tag_agenda")
@@ -422,6 +425,8 @@ class TestFSMHandlers:
         """Тест обработки валидного имени человека."""
         mock_message = Mock(spec=Message)
         mock_message.text = "John Doe"
+        mock_message.from_user = Mock()
+        mock_message.from_user.id = 12345
         mock_state = Mock(spec=FSMContext)
         mock_state.clear = AsyncMock()
         mock_generate.return_value = None

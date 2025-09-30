@@ -177,26 +177,59 @@ async def cmd_cancel(msg: Message, state: FSMContext):
     await msg.answer("Ок. Сбросил состояние.")
 
 
-@router.message(F.document | (F.text & ~F.text.startswith("/")))
-async def receive_input(msg: Message, state: FSMContext):
-    # Проверяем, не находимся ли мы в состоянии ожидания дополнительного промпта
+@router.message(F.text & ~F.text.startswith("/"))
+async def handle_text_with_fsm_check(msg: Message, state: FSMContext):
+    """Обработчик текста - проверяет FSM состояния перед основной логикой."""
     current_state = await state.get_state()
-    if current_state == IngestStates.waiting_extra:
-        # Если да, то это дополнительный промпт, передаем управление соответствующему обработчику
-        await extra_entered(msg, state)
+    logger.debug(f"Text input '{msg.text}' in state: {current_state}")
+
+    # Проверяем agenda состояния
+    from app.bot.handlers_agenda import AgendaStates
+
+    if current_state == AgendaStates.waiting_person_name:
+        logger.info(f"Redirecting person name '{msg.text}' to agenda handler")
+        from app.bot.handlers_agenda import handle_person_name_input
+
+        await handle_person_name_input(msg, state)
         return
 
-    # Проверяем, не находимся ли мы в состоянии People Miner
+    if current_state == AgendaStates.waiting_meeting_id:
+        logger.info(f"Redirecting meeting ID '{msg.text}' to agenda handler")
+        from app.bot.handlers_agenda import handle_meeting_id_input
+
+        await handle_meeting_id_input(msg, state)
+        return
+
+    if current_state == AgendaStates.waiting_tag_name:
+        logger.info(f"Redirecting tag name '{msg.text}' to agenda handler")
+        from app.bot.handlers_agenda import handle_tag_name_input
+
+        await handle_tag_name_input(msg, state)
+        return
+
+    # Проверяем people miner состояния
     from app.bot.states.people_states import PeopleStates
 
     if current_state == PeopleStates.waiting_assign_en:
-        # Если да, то это ввод английского имени для People Miner
-        # Передаем управление соответствующему обработчику
+        logger.info(f"Redirecting EN name '{msg.text}' to people handler v1")
         from app.bot.handlers_people import set_en_name_handler
 
         await set_en_name_handler(msg, state)
         return
 
+    if current_state == PeopleStates.v2_waiting_custom_name:
+        logger.info(f"Redirecting custom name '{msg.text}' to people handler v2")
+        from app.bot.handlers_people_v2 import handle_custom_name_input
+
+        await handle_custom_name_input(msg, state)
+        return
+
+    # Если нет активного FSM состояния, обрабатываем как обычный текст для суммаризации
+    await _process_ingest_input(msg, state)
+
+
+async def _process_ingest_input(msg: Message, state: FSMContext):
+    """Обрабатывает ввод для суммаризации (документы и текст)."""
     raw_bytes: bytes | None = None
     text: str | None = None
     filename = "message.txt"
@@ -222,6 +255,12 @@ async def receive_input(msg: Message, state: FSMContext):
     await state.update_data(raw_bytes=raw_bytes, text=text, filename=filename)
     await state.set_state(IngestStates.waiting_prompt)
     await msg.answer("Выбери шаблон суммаризации:", reply_markup=_prompts_kb())
+
+
+@router.message(F.document)
+async def receive_document(msg: Message, state: FSMContext):
+    """Обработчик документов для суммаризации."""
+    await _process_ingest_input(msg, state)
 
 
 @router.callback_query(F.data.startswith("prompt:"))
@@ -506,6 +545,19 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
                 "tags": tags,
             }
         )
+
+        # 4.5) Обновляем кандидатов людей через People Miner v2
+        try:
+            from app.core.people_miner2 import ingest_text
+
+            meeting_page_id = _extract_page_id_from_url(notion_url)
+            ingest_text(
+                text=meta["text"], meeting_id=meeting_page_id, meeting_date=meeting_date_iso
+            )
+            logger.info("People Miner v2: candidates updated from meeting text")
+        except Exception as e:
+            logger.warning(f"People Miner v2 ingest failed: {e}")
+            # Не критично - продолжаем обработку
 
         # 5) Обработка коммитов
         await msg.answer(

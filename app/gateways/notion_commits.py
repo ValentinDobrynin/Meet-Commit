@@ -12,6 +12,7 @@ import httpx
 
 from app.core.clients import get_notion_http_client
 from app.core.metrics import MetricNames, timer, track_batch_operation
+from app.gateways.error_handling import notion_create, notion_query, notion_update
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,7 @@ def _props_commit(item: dict, meeting_page_id: str) -> dict[str, Any]:
     return props
 
 
+@notion_create("upsert_commits")  # Strict handling для целостности данных
 def upsert_commits(meeting_page_id: str, commits: list[dict]) -> dict[str, list[str]]:
     """
     Создает или обновляет коммиты в базе данных с дедупликацией по ключу.
@@ -220,6 +222,7 @@ def upsert_commits(meeting_page_id: str, commits: list[dict]) -> dict[str, list[
 PAGE_SIZE = 10
 
 
+@notion_query("query_commits", fallback={"results": []})  # Graceful fallback для стабильности UI
 def _query_commits(
     filter_: dict[str, Any] | None = None,
     sorts: list[dict] | None = None,
@@ -234,12 +237,10 @@ def _query_commits(
         page_size: Размер страницы
 
     Returns:
-        Ответ Notion API с results
+        Ответ Notion API с results (graceful fallback на {"results": []} при ошибках)
     """
     with timer(MetricNames.NOTION_QUERY_COMMITS):
-        client = get_notion_http_client()
-
-        try:
+        with get_notion_http_client() as client:
             payload: dict[str, Any] = {
                 "page_size": page_size,
             }
@@ -266,12 +267,6 @@ def _query_commits(
             )  # Временно INFO для отладки
 
             return result  # type: ignore[no-any-return]
-
-        except Exception as e:
-            logger.error(f"Error querying commits: {e}")
-            raise
-        finally:
-            client.close()
 
 
 def _map_commit_page(page: dict[str, Any]) -> dict[str, Any]:
@@ -349,6 +344,36 @@ def query_commits_recent(limit: int = PAGE_SIZE) -> list[dict[str, Any]]:
 
     except Exception as e:
         logger.error(f"Error in query_commits_recent: {e}")
+        return []
+
+
+def query_commits_all(limit: int = 1000) -> list[dict[str, Any]]:
+    """
+    Получает все коммиты для анализа активности людей.
+
+    Args:
+        limit: Максимальное количество коммитов для анализа
+
+    Returns:
+        Список всех коммитов в стандартном формате
+    """
+    try:
+        logger.info(f"Querying all commits for people activity analysis (limit: {limit})")
+
+        # Без фильтра - получаем все коммиты
+        response = _query_commits(
+            filter_=None,
+            sorts=[{"property": "Due", "direction": "descending"}],  # Новые сначала
+            page_size=limit,
+        )
+
+        commits = [_map_commit_page(page) for page in response.get("results", [])]
+        logger.info(f"Retrieved {len(commits)} commits for activity analysis")
+
+        return commits
+
+    except Exception as e:
+        logger.error(f"Error in query_commits_all: {e}")
         return []
 
 
@@ -580,6 +605,7 @@ def query_commits_by_assignee(assignee_name: str, limit: int = PAGE_SIZE) -> lis
         return []
 
 
+@notion_update("update_commit_status")  # Strict handling для целостности данных
 def update_commit_status(commit_id: str, status: str) -> bool:
     """
     Обновляет статус коммита в Notion.
@@ -590,6 +616,9 @@ def update_commit_status(commit_id: str, status: str) -> bool:
 
     Returns:
         True если обновление прошло успешно
+
+    Raises:
+        NotionAPIError: При ошибках API (strict handling для целостности данных)
     """
     with timer(MetricNames.NOTION_UPDATE_COMMIT_STATUS):
         client = get_notion_http_client()

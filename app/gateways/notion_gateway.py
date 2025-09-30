@@ -3,6 +3,7 @@ from typing import Any
 
 from app.core.clients import get_notion_client
 from app.core.metrics import MetricNames, inc, timer
+from app.gateways.error_handling import notion_create
 from app.settings import settings as app_settings
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ def _props(payload: dict[str, Any]) -> dict[str, Any]:
 # -------- public API --------
 
 
+@notion_create("upsert_meeting")  # Strict handling для целостности данных
 def upsert_meeting(payload: dict[str, Any]) -> str:
     """
     Создаёт новую страницу Meeting или возвращает существующую по raw_hash.

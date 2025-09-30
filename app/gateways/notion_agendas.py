@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from app.core.clients import get_notion_http_client
 from app.core.metrics import timer
+from app.gateways.error_handling import notion_create, notion_query
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ def _build_agenda_properties(
     return properties
 
 
+@notion_query("find_agenda_by_hash", fallback=None)  # Graceful fallback для стабильности
 def find_agenda_by_hash(raw_hash: str) -> dict[str, Any] | None:
     """
     Ищет существующую повестку по хэшу для дедупликации.
@@ -62,7 +64,7 @@ def find_agenda_by_hash(raw_hash: str) -> dict[str, Any] | None:
         raw_hash: Хэш исходных данных
 
     Returns:
-        Данные страницы если найдена, иначе None
+        Данные страницы если найдена, иначе None (graceful fallback при ошибках API)
     """
     client = get_notion_http_client()
 
@@ -92,6 +94,7 @@ def find_agenda_by_hash(raw_hash: str) -> dict[str, Any] | None:
         client.close()
 
 
+@notion_create("create_agenda")  # Strict handling для целостности данных
 def create_agenda(
     name: str,
     date_iso: str,
@@ -165,6 +168,7 @@ def create_agenda(
             client.close()
 
 
+@notion_query("query_agendas_by_context", fallback=[])  # Graceful fallback для стабильности
 def query_agendas_by_context(
     context_type: ContextType, context_key: str | None = None, limit: int = 10
 ) -> list[dict[str, Any]]:
@@ -177,7 +181,7 @@ def query_agendas_by_context(
         limit: Максимальное количество результатов
 
     Returns:
-        Список повесток
+        Список повесток (graceful fallback на [] при ошибках API)
     """
     with timer("notion.query_agendas"):
         client = get_notion_http_client()
@@ -220,12 +224,13 @@ def query_agendas_by_context(
             client.close()
 
 
+@notion_query("get_agenda_statistics", fallback={})  # Graceful fallback для статистики
 def get_agenda_statistics() -> dict[str, Any]:
     """
     Получает статистику по повесткам.
 
     Returns:
-        Словарь со статистикой
+        Словарь со статистикой (graceful fallback на {} при ошибках API)
     """
     client = get_notion_http_client()
 

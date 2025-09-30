@@ -11,7 +11,6 @@ from pydantic import ValidationError
 from app.core.llm_extract_commits import (
     ExtractedCommit,
     _build_messages,
-    _create_client,
     _extract_json,
     _load_prompt,
     _to_models,

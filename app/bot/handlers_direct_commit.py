@@ -12,7 +12,7 @@ from app.bot.states.commit_states import DirectCommitStates
 from app.core.commit_normalize import build_key, build_title, validate_date_iso
 from app.core.people_store import canonicalize_list, load_people
 from app.core.tags import tag_text_for_commit
-from app.gateways.notion_commits import upsert_commits
+from app.gateways.notion_commits_async import upsert_commits_async
 from app.gateways.notion_gateway import upsert_meeting
 
 logger = logging.getLogger(__name__)
@@ -551,7 +551,7 @@ async def confirm_direct_commit(callback: CallbackQuery, state: FSMContext) -> N
         }
 
         # Сохраняем в Notion
-        result = upsert_commits(direct_meeting_id, [commit_data])
+        result = await upsert_commits_async(direct_meeting_id, [commit_data])
         created = result.get("created", [])
         updated = result.get("updated", [])
 

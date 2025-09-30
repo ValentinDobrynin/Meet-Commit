@@ -17,6 +17,7 @@ from .handlers_direct_commit import router as direct_commit_router
 from .handlers_inline import router as inline_router
 from .handlers_llm_commit import router as llm_commit_router
 from .handlers_people import router as people_router
+from .handlers_people_v2 import router as people_v2_router
 from .handlers_queries import router as queries_router
 from .handlers_tags_review import router as tags_review_router
 from .init import build_bot
@@ -80,17 +81,19 @@ except KeyError:
     raise ValueError("TELEGRAM_TOKEN not found in environment variables") from None
 
 bot, dp = build_bot(TELEGRAM_TOKEN, MemoryStorage())
-# Специализированные роутеры должны быть зарегистрированы ПЕРЕД основным
-dp.include_router(tags_review_router)  # Приоритет для FSM состояний
+# FSM роутеры должны быть зарегистрированы ПЕРВЫМИ для перехвата состояний
+dp.include_router(agenda_router)  # ПЕРВЫЙ: Система повесток с FSM состояниями
+dp.include_router(tags_review_router)  # FSM состояния для тегирования
 dp.include_router(direct_commit_router)  # Прямые коммиты с FSM
+dp.include_router(people_router)  # People Miner v1 с FSM
+dp.include_router(people_v2_router)  # People Miner v2 с улучшенным UX
+# Команды без FSM
 dp.include_router(llm_commit_router)  # LLM коммиты (без FSM)
-dp.include_router(agenda_router)  # Система повесток с FSM
 dp.include_router(queries_router)  # Команды запросов к коммитам
 dp.include_router(inline_router)
 dp.include_router(admin_router)
 dp.include_router(admin_monitoring_router)  # Расширенные админские команды
-dp.include_router(people_router)
-dp.include_router(router)  # Основной роутер последним
+dp.include_router(router)  # Основной роутер ПОСЛЕДНИМ
 
 
 def acquire_lock():

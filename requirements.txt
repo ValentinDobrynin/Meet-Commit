@@ -27,4 +27,5 @@ webvtt-py==0.4.6
 rapidfuzz==3.9.7
 tenacity==9.0.0
 PyYAML==6.0.2
+psutil==6.1.0
 

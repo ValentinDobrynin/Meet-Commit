@@ -342,7 +342,7 @@ class TestConfirmationFlow:
             ),
             patch("app.core.people_store.canonicalize_list") as mock_canonicalize,
             patch("app.core.tags.tag_text_for_commit", return_value=["Finance/Report"]),
-            patch("app.bot.handlers_direct_commit.upsert_commits") as mock_upsert,
+            patch("app.bot.handlers_direct_commit.upsert_commits_async") as mock_upsert,
         ):
             mock_canonicalize.side_effect = lambda x: x  # Возвращаем как есть
             mock_upsert.return_value = {"created": ["commit-123"], "updated": []}
@@ -470,7 +470,7 @@ class TestIntegration:
             ),
             patch("app.core.people_store.canonicalize_list", side_effect=lambda x: x),
             patch("app.core.tags.tag_text_for_commit", return_value=["Finance/Report"]),
-            patch("app.bot.handlers_direct_commit.upsert_commits") as mock_upsert,
+            patch("app.bot.handlers_direct_commit.upsert_commits_async") as mock_upsert,
         ):
             mock_upsert.return_value = {"created": ["commit-123"], "updated": []}
 
@@ -518,7 +518,7 @@ class TestIntegration:
                 ),
                 patch("app.core.people_store.canonicalize_list", side_effect=lambda x: x),
                 patch("app.core.tags.tag_text_for_commit", return_value=[]),
-                patch("app.bot.handlers_direct_commit.upsert_commits") as mock_upsert,
+                patch("app.bot.handlers_direct_commit.upsert_commits_async") as mock_upsert,
             ):
                 mock_upsert.return_value = {"created": ["commit-123"], "updated": []}
 

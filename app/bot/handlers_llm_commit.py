@@ -13,7 +13,8 @@ from aiogram.types import Message
 
 from app.bot.formatters import format_commit_card
 from app.core.llm_commit_parse import parse_commit_text
-from app.gateways.notion_commits import _map_commit_page
+
+# from app.gateways.notion_commits import _map_commit_page  # Больше не используется
 from app.gateways.notion_commits_async import upsert_commits_async
 
 logger = logging.getLogger(__name__)
@@ -51,27 +52,17 @@ async def _save_commit_to_notion(commit_data: dict) -> dict[str, Any]:
 
         logger.info(f"Saved LLM commit: {result}")
 
-        # Получаем ID созданного коммита
-        if result.get("created"):
-            # Получаем полные данные коммита из Notion для форматирования
-            from app.core.clients import get_notion_client
-            from app.settings import settings
-
-            client = get_notion_client()
-            try:
-                response = client.databases.query(
-                    database_id=settings.commits_db_id or "",
-                    filter={"property": "Key", "rich_text": {"equals": commit_data["key"]}},
-                    page_size=1,
-                )
-
-                if hasattr(response, "get") and response.get("results"):
-                    page = response["results"][0]  # type: ignore[index]
-                    return _map_commit_page(page)
-
-            finally:
-                # Notion SDK клиент не требует явного закрытия
-                pass
+        # Используем ID созданного коммита из результата без дополнительного запроса
+        if result.get("created") or result.get("updated"):
+            # Добавляем ID и short_id для отображения
+            commit_id = (
+                result.get("created", result.get("updated", [""]))[0]
+                if (result.get("created") or result.get("updated"))
+                else ""
+            )
+            commit_data["id"] = commit_id
+            commit_data["short_id"] = commit_id.replace("-", "")[-8:] if commit_id else "unknown"
+            return commit_data
 
         # Fallback: возвращаем исходные данные
         return commit_data

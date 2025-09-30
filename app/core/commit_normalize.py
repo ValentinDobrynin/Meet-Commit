@@ -439,11 +439,11 @@ def normalize_commits(
         from_person = []
         if commit.direction == "mine":
             # Для "mine" коммитов заказчик - тот, кто их записал (обычно ведущий встречи)
-            from_person = [fill_mine_owner] if fill_mine_owner else ["System"]
+            from_person = [fill_mine_owner] if fill_mine_owner else ["Valya Dobrynin"]
         else:
-            # Для "theirs" коммитов заказчик - тот, кто поставил задачу (из контекста)
-            # Пока ставим System, позже можно улучшить логику
-            from_person = ["System"]
+            # Для "theirs" коммитов заказчик - тот, кто поставил задачу
+            # Используем Valya Dobrynin как fallback вместо System
+            from_person = ["Valya Dobrynin"]
 
         result.append(
             NormalizedCommit(

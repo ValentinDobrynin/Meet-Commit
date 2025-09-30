@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from app.gateways.notion_commits import _query_by_key, upsert_commits
-from app.gateways.notion_gateway import _client, _settings, upsert_meeting
+from app.gateways.notion_gateway import upsert_meeting
 
 
 def test_notion_settings():

@@ -21,45 +21,45 @@ class TestRoleFallbacks:
     def test_both_specified(self):
         """Тест когда указаны и исполнитель и заказчик."""
         llm_result = {"assignee": "Sasha", "from_person": "Daniil"}
-        assignee, from_person, direction = _apply_role_fallbacks(llm_result, "Valya")
+        assignees, from_person, direction = _apply_role_fallbacks(llm_result, "Valya")
 
-        assert assignee == "Sasha"
+        assert assignees == ["Sasha"]
         assert from_person == "Daniil"
         assert direction == "theirs"  # Исполнитель не пользователь
 
     def test_only_assignee(self):
         """Тест когда указан только исполнитель."""
         llm_result = {"assignee": "Sasha", "from_person": None}
-        assignee, from_person, direction = _apply_role_fallbacks(llm_result, "Valya")
+        assignees, from_person, direction = _apply_role_fallbacks(llm_result, "Valya")
 
-        assert assignee == "Sasha"
+        assert assignees == ["Sasha"]
         assert from_person == "Valya"  # Fallback к пользователю
         assert direction == "theirs"
 
     def test_only_from_person(self):
         """Тест когда указан только заказчик."""
         llm_result = {"assignee": None, "from_person": "Sasha"}
-        assignee, from_person, direction = _apply_role_fallbacks(llm_result, "Valya")
+        assignees, from_person, direction = _apply_role_fallbacks(llm_result, "Valya")
 
-        assert assignee == "Valya"  # Fallback к пользователю
+        assert assignees == ["Valya"]  # Fallback к пользователю
         assert from_person == "Sasha"
         assert direction == "mine"  # Пользователь исполнитель
 
     def test_nothing_specified(self):
         """Тест когда ничего не указано."""
         llm_result = {"assignee": None, "from_person": None}
-        assignee, from_person, direction = _apply_role_fallbacks(llm_result, "Valya")
+        assignees, from_person, direction = _apply_role_fallbacks(llm_result, "Valya")
 
-        assert assignee == "Valya"  # Fallback к пользователю
+        assert assignees == ["Valya"]  # Fallback к пользователю
         assert from_person == "Valya"  # Fallback к пользователю
         assert direction == "mine"  # Пользователь и исполнитель и заказчик
 
     def test_user_as_assignee(self):
         """Тест когда пользователь указан как исполнитель."""
         llm_result = {"assignee": "Valya", "from_person": "Sasha"}
-        assignee, from_person, direction = _apply_role_fallbacks(llm_result, "Valya")
+        assignees, from_person, direction = _apply_role_fallbacks(llm_result, "Valya")
 
-        assert assignee == "Valya"
+        assert assignees == ["Valya"]
         assert from_person == "Sasha"
         assert direction == "mine"  # Пользователь исполнитель
 
@@ -79,7 +79,7 @@ class TestBuildFullCommit:
 
         llm_result = {"text": "подготовить отчет", "due": "2025-10-05", "confidence": 0.9}
 
-        result = _build_full_commit(llm_result, "Valya", "Sasha", "Daniil", "theirs")
+        result = _build_full_commit(llm_result, "Valya", ["Sasha"], "Daniil", "theirs")
 
         assert result["title"] == "Test Title"
         assert result["text"] == "подготовить отчет"
@@ -104,7 +104,7 @@ class TestBuildFullCommit:
 
         llm_result = {"text": "сделать задачу"}
 
-        result = _build_full_commit(llm_result, "Valya", "Valya", "Valya", "mine")
+        result = _build_full_commit(llm_result, "Valya", ["Valya"], "Valya", "mine")
 
         assert result["text"] == "сделать задачу"
         assert result["direction"] == "mine"
@@ -205,9 +205,9 @@ class TestEdgeCases:
     def test_role_fallbacks_with_empty_strings(self):
         """Тест fallback с пустыми строками."""
         llm_result = {"assignee": "", "from_person": ""}
-        assignee, from_person, direction = _apply_role_fallbacks(llm_result, "Valya")
+        assignees, from_person, direction = _apply_role_fallbacks(llm_result, "Valya")
 
-        assert assignee == "Valya"  # Пустая строка → fallback
+        assert assignees == ["Valya"]  # Пустая строка → fallback
         assert from_person == "Valya"
         assert direction == "mine"
 

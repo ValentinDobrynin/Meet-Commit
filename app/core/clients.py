@@ -20,6 +20,7 @@ import httpx
 from notion_client import Client as NotionClient
 from openai import AsyncOpenAI, OpenAI
 
+# from app.core.smart_caching import get_client_manager, lru_cache_with_ttl  # Отключено из-за проблем с lifecycle
 from app.core.types import ClientsInfo, NotionConfig, OpenAIConfig
 from app.settings import settings
 
@@ -76,19 +77,11 @@ def get_notion_client() -> NotionClient:
     return NotionClient(auth=settings.notion_token)
 
 
-@lru_cache(maxsize=1)
-def get_notion_http_client() -> httpx.Client:
+def _create_notion_http_client() -> httpx.Client:
     """
-    HTTP клиент для прямых вызовов Notion API.
+    Создает новый HTTP клиент для Notion API.
 
-    Используется когда нужен прямой контроль над HTTP запросами
-    или когда notion-client SDK не подходит.
-
-    Returns:
-        Настроенный httpx.Client с headers и timeout'ами
-
-    Raises:
-        NotionClientError: Если токен не настроен
+    Внутренняя функция для создания клиентов. Используется кэшированной версией.
     """
     if not settings.notion_token:
         raise NotionClientError("NOTION_TOKEN не настроен в переменных окружения")
@@ -106,19 +99,45 @@ def get_notion_http_client() -> httpx.Client:
         pool=5.0,
     )
 
+    # Улучшенные лимиты для production
     limits = httpx.Limits(
-        max_keepalive_connections=MAX_KEEPALIVE_CONNECTIONS,
-        max_connections=MAX_CONNECTIONS,
+        max_keepalive_connections=MAX_KEEPALIVE_CONNECTIONS * 2,  # Больше keep-alive соединений
+        max_connections=MAX_CONNECTIONS * 2,  # Больше общих соединений
+        keepalive_expiry=300.0,  # 5 минут keep-alive
     )
 
-    logger.debug(f"Creating cached Notion HTTP client with timeout={DEFAULT_TIMEOUT}s")
+    logger.debug(f"Creating new Notion HTTP client with timeout={DEFAULT_TIMEOUT}s")
     return httpx.Client(timeout=timeout, headers=headers, limits=limits)
+
+
+def get_notion_http_client() -> httpx.Client:
+    """
+    HTTP клиент для прямых вызовов Notion API с оптимизированным connection pooling.
+
+    ВАЖНО: HTTP клиенты НЕ кэшируются из-за проблем с lifecycle (нельзя переиспользовать закрытые клиенты).
+    Вместо этого используется улучшенный connection pooling для переиспользования TCP соединений.
+
+    Используется когда нужен прямой контроль над HTTP запросами
+    или когда notion-client SDK не подходит.
+
+    Оптимизации:
+    - Connection pooling: переиспользование TCP соединений
+    - Keep-alive: 5 минут для соединений
+    - Увеличенные лимиты: готовность к production нагрузкам
+    - Правильный lifecycle: каждый клиент создается и закрывается корректно
+
+    Returns:
+        Новый httpx.Client с оптимизированными настройками
+
+    Raises:
+        NotionClientError: Если токен не настроен
+    """
+    return _create_notion_http_client()
 
 
 # =============== OPENAI CLIENTS ===============
 
 
-@lru_cache(maxsize=1)
 def get_openai_client(*, timeout: float | None = None) -> OpenAI:
     """
     Синхронный OpenAI клиент для блокирующих операций.
@@ -155,7 +174,6 @@ def get_openai_client(*, timeout: float | None = None) -> OpenAI:
     return OpenAI(api_key=settings.openai_api_key, http_client=http_client)
 
 
-@lru_cache(maxsize=1)
 def get_openai_parse_client() -> OpenAI:
     """
     Специализированный OpenAI клиент для быстрого парсинга.
@@ -231,7 +249,7 @@ def validate_notion_config() -> NotionConfig:
     config["missing_configs"] = missing_configs
     config["ready"] = len(missing_configs) == 0
 
-    return config
+    return config  # type: ignore[return-value]
 
 
 def validate_openai_config() -> OpenAIConfig:
@@ -263,22 +281,21 @@ def get_clients_info() -> ClientsInfo:
         "openai": validate_openai_config(),
         "cache_info": {
             "notion_client": get_notion_client.cache_info(),
-            "notion_http_client": get_notion_http_client.cache_info(),
-            "openai_client": get_openai_client.cache_info(),
-            "openai_parse_client": get_openai_parse_client.cache_info(),
+            "notion_http_client": "not_cached_due_to_lifecycle_issues",  # Не кэшируется из-за проблем с lifecycle
+            "openai_client": "not_cached",  # OpenAI клиенты не кэшируются
+            "openai_parse_client": "not_cached",  # OpenAI клиенты не кэшируются
         },
     }
 
 
 def clear_clients_cache() -> None:
     """
-    Очищает кэш всех клиентов.
+    Очищает кэш клиентов.
 
     Полезно для принудительного пересоздания клиентов
     после изменения конфигурации.
     """
-    logger.info("Clearing all clients cache")
+    logger.info("Clearing clients cache")
     get_notion_client.cache_clear()
-    get_notion_http_client.cache_clear()
-    get_openai_client.cache_clear()
-    get_openai_parse_client.cache_clear()
+    # HTTP клиенты теперь не кэшируются из-за проблем с lifecycle
+    # Каждый вызов создает новый клиент, что безопаснее

@@ -15,6 +15,7 @@
       "Валентин",
       "Валя",
       "Valentin",
+      "Valentin Dobrynin",
       "Valya Dobrynin",
       "Val"
     ]
@@ -103,5 +104,35 @@
     ],
     "role": "",
     "org": ""
+  },
+  {
+    "name_en": "Dzhon Smit",
+    "aliases": [
+      "Джон Смит"
+    ],
+    "meta": {
+      "created_at": "2025-09-29T19:15:47.520861",
+      "source": "people_miner_v2"
+    }
+  },
+  {
+    "name_en": "Uchastniki",
+    "aliases": [
+      "Участники"
+    ],
+    "meta": {
+      "created_at": "2025-09-29T19:17:11.777037",
+      "source": "people_miner_v2"
+    }
+  },
+  {
+    "name_en": "Vadim Petrov",
+    "aliases": [
+      "Петров"
+    ],
+    "meta": {
+      "created_at": "2025-09-29T19:40:23.695780",
+      "source": "people_miner_v2"
+    }
   }
 ]

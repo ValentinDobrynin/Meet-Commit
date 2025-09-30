@@ -14,6 +14,7 @@ from typing import Any, Literal, TypedDict
 
 class CommitData(TypedDict, total=False):
     """Базовая структура данных коммита."""
+
     title: str
     text: str
     direction: Literal["mine", "theirs"]
@@ -29,6 +30,7 @@ class CommitData(TypedDict, total=False):
 
 class NotionCommitData(CommitData):
     """Коммит с дополнительными Notion полями."""
+
     id: str
     url: str
     short_id: str
@@ -37,6 +39,7 @@ class NotionCommitData(CommitData):
 
 class ExtractedCommitData(TypedDict, total=False):
     """Данные коммита извлеченного из LLM."""
+
     text: str
     direction: Literal["mine", "theirs"]
     assignees: list[str]
@@ -52,6 +55,7 @@ class ExtractedCommitData(TypedDict, total=False):
 
 class MeetingData(TypedDict, total=False):
     """Базовая структура данных встречи."""
+
     title: str
     date: str | None  # ISO YYYY-MM-DD
     attendees: list[str]
@@ -63,6 +67,7 @@ class MeetingData(TypedDict, total=False):
 
 class NotionMeetingData(MeetingData):
     """Встреча с дополнительными Notion полями."""
+
     id: str
     url: str
     short_id: str
@@ -73,6 +78,7 @@ class NotionMeetingData(MeetingData):
 
 class ReviewData(TypedDict, total=False):
     """Структура данных для Review Queue."""
+
     text: str
     direction: Literal["mine", "theirs"]
     assignees: list[str]
@@ -87,6 +93,7 @@ class ReviewData(TypedDict, total=False):
 
 class NotionReviewData(ReviewData):
     """Review с дополнительными Notion полями."""
+
     id: str
     url: str
     short_id: str
@@ -98,12 +105,14 @@ class NotionReviewData(ReviewData):
 
 class AgendaContextData(TypedDict):
     """Контекст для повестки."""
+
     context_type: Literal["Meeting", "Person", "Tag"]
     context_key: str
 
 
 class AgendaData(TypedDict, total=False):
     """Структура данных повестки."""
+
     name: str
     date_iso: str
     context_type: Literal["Meeting", "Person", "Tag"]
@@ -117,6 +126,7 @@ class AgendaData(TypedDict, total=False):
 
 class NotionAgendaData(AgendaData):
     """Повестка с дополнительными Notion полями."""
+
     id: str
     url: str
 
@@ -126,6 +136,7 @@ class NotionAgendaData(AgendaData):
 
 class MetricSnapshot(TypedDict):
     """Снимок метрик."""
+
     counters: dict[str, int]
     errors: dict[str, int]
     last_errors: dict[str, str]
@@ -136,6 +147,7 @@ class MetricSnapshot(TypedDict):
 
 class LatencyData(TypedDict):
     """Данные латентности."""
+
     avg: float
     p50: float
     p95: float
@@ -145,6 +157,7 @@ class LatencyData(TypedDict):
 
 class LLMTokenData(TypedDict):
     """Данные использования LLM токенов."""
+
     prompt: int
     completion: int
     total: int
@@ -156,6 +169,7 @@ class LLMTokenData(TypedDict):
 
 class PipelineStats(TypedDict):
     """Статистика выполнения пайплайна."""
+
     created: int
     updated: int
     review_created: int
@@ -164,6 +178,7 @@ class PipelineStats(TypedDict):
 
 class NormalizationMeta(TypedDict, total=False):
     """Метаданные нормализации документа."""
+
     text: str
     title: str
     date: str | None
@@ -177,6 +192,7 @@ class NormalizationMeta(TypedDict, total=False):
 
 class NotionQueryResponse(TypedDict):
     """Ответ от Notion API query."""
+
     results: list[dict[str, Any]]
     next_cursor: str | None
     has_more: bool
@@ -184,6 +200,7 @@ class NotionQueryResponse(TypedDict):
 
 class NotionPageResponse(TypedDict):
     """Ответ от Notion API для страницы."""
+
     id: str
     url: str
     properties: dict[str, Any]
@@ -193,6 +210,7 @@ class NotionPageResponse(TypedDict):
 
 class OpenAIUsageData(TypedDict):
     """Данные использования OpenAI API."""
+
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
@@ -200,6 +218,7 @@ class OpenAIUsageData(TypedDict):
 
 class OpenAIResponse(TypedDict):
     """Ответ от OpenAI API."""
+
     choices: list[dict[str, Any]]
     usage: OpenAIUsageData | None
 
@@ -209,6 +228,7 @@ class OpenAIResponse(TypedDict):
 
 class NotionConfig(TypedDict):
     """Конфигурация Notion."""
+
     token_configured: bool
     meetings_db_configured: bool
     commits_db_configured: bool
@@ -222,6 +242,7 @@ class NotionConfig(TypedDict):
 
 class OpenAIConfig(TypedDict):
     """Конфигурация OpenAI."""
+
     api_key_configured: bool
     default_model: str
     default_temperature: float
@@ -232,6 +253,55 @@ class OpenAIConfig(TypedDict):
 
 class ClientsInfo(TypedDict):
     """Информация о клиентах."""
+
     notion: NotionConfig
     openai: OpenAIConfig
     cache_info: dict[str, Any]
+
+
+# =============== PEOPLE MINER TYPES ===============
+
+
+class CandidateSample(TypedDict):
+    """Образец контекста для кандидата."""
+
+    meeting_id: str
+    date: str
+    snippet: str
+
+
+class CandidateData(TypedDict, total=False):
+    """Данные кандидата в People Miner v2."""
+
+    first_seen: str
+    last_seen: str
+    freq: int
+    meetings: int
+    samples: list[CandidateSample]
+    _meeting_ids: set[str]  # Внутреннее поле для отслеживания встреч
+
+
+class CandidateItem(TypedDict):
+    """Элемент кандидата для отображения."""
+
+    alias: str
+    freq: int
+    meetings: int
+    first_seen: str
+    last_seen: str
+    score: float
+    samples: list[CandidateSample]
+
+
+class CandidateStats(TypedDict):
+    """Статистика кандидатов."""
+
+    total: int
+    avg_freq: float
+    avg_meetings: float
+    freq_distribution: dict[str, int]  # high/medium/low
+    recent_candidates: int
+
+
+# Для удобства использования - алиас типа
+CandidateListResult = tuple[list[CandidateItem], int]

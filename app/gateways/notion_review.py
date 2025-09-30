@@ -9,6 +9,15 @@ from app.core.clients import get_notion_http_client
 from app.core.constants import (
     REVIEW_STATUS_PENDING,
 )
+from app.gateways.error_handling import notion_create, notion_query, notion_update
+from app.gateways.notion_parsers import (
+    parse_date,
+    parse_multi_select,
+    parse_number,
+    parse_relation_single,
+    parse_rich_text,
+    parse_select,
+)
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -45,6 +54,7 @@ def _props_review(item: dict, meeting_page_id: str) -> dict[str, Any]:
     }
 
 
+@notion_query("find_pending_by_key", fallback=None)  # Graceful fallback для стабильности
 def find_pending_by_key(key: str) -> dict | None:
     """
     Ищет pending элемент в Review Queue по ключу.
@@ -53,7 +63,7 @@ def find_pending_by_key(key: str) -> dict | None:
         key: Ключ для поиска
 
     Returns:
-        Словарь с page_id и properties если найден, иначе None
+        Словарь с page_id и properties если найден, иначе None (graceful fallback при ошибках)
     """
     if not key:
         return None
@@ -68,8 +78,7 @@ def find_pending_by_key(key: str) -> dict | None:
         "page_size": 1,
     }
 
-    client = get_notion_http_client()
-    try:
+    with get_notion_http_client() as client:
         response = client.post(f"{NOTION_API}/databases/{settings.review_db_id}/query", json=body)
         response.raise_for_status()
         results = response.json().get("results", [])
@@ -80,13 +89,8 @@ def find_pending_by_key(key: str) -> dict | None:
         item = results[0]
         return {"page_id": item["id"], "properties": item["properties"]}
 
-    except Exception as e:
-        logger.error(f"Error in find_pending_by_key: {e}")
-        raise
-    finally:
-        client.close()
 
-
+@notion_create("upsert_review")  # Strict handling для целостности данных
 def upsert_review(item: dict, meeting_page_id: str) -> dict:
     """
     Создает или обновляет элемент в Review Queue с дедупликацией по ключу.
@@ -172,6 +176,7 @@ def enqueue_with_upsert(items: list[dict], meeting_page_id: str) -> dict:
     return stats
 
 
+@notion_create("enqueue_review_items")  # Strict handling для целостности данных
 def enqueue(items: list[dict], meeting_page_id: str) -> list[str]:
     """
     Добавляет элементы в очередь на ревью (старая версия без дедупликации).
@@ -214,6 +219,7 @@ def enqueue(items: list[dict], meeting_page_id: str) -> list[str]:
     return ids
 
 
+@notion_update("set_review_status")  # Strict handling для целостности данных
 def set_status(page_id: str, status: str, *, linked_commit_id: str | None = None) -> None:
     """
     Обновляет статус элемента в очереди ревью.
@@ -268,6 +274,7 @@ def set_status(page_id: str, status: str, *, linked_commit_id: str | None = None
         client.close()
 
 
+@notion_update("archive_review")  # Strict handling для целостности данных
 def archive(page_id: str) -> None:
     """
     Архивирует страницу Review (soft-удаление).
@@ -300,52 +307,10 @@ def _short_id(page_id: str) -> str:
     return page_id.replace("-", "")[-6:]
 
 
-def _parse_rich_text(prop: dict | None) -> str:
-    """Парсит Notion rich_text property."""
-    if not prop or prop.get("type") != "rich_text":
-        return ""
-    parts = prop.get("rich_text", [])
-    return "".join(p.get("plain_text", "") for p in parts).strip()
+# Используем общие парсеры из notion_parsers.py
 
 
-def _parse_select(prop: dict | None) -> str | None:
-    """Парсит Notion select property."""
-    if not prop or prop.get("type") != "select":
-        return None
-    sel = prop.get("select") or {}
-    return sel.get("name")
-
-
-def _parse_multi_select(prop: dict | None) -> list[str]:
-    """Парсит Notion multi_select property."""
-    if not prop or prop.get("type") != "multi_select":
-        return []
-    return [x.get("name", "") for x in prop.get("multi_select", []) if x.get("name")]
-
-
-def _parse_date(prop: dict | None) -> str | None:
-    """Парсит Notion date property."""
-    if not prop or prop.get("type") != "date":
-        return None
-    dt = prop.get("date") or {}
-    return dt.get("start")
-
-
-def _parse_number(prop: dict | None) -> float | None:
-    """Парсит Notion number property."""
-    if not prop or prop.get("type") != "number":
-        return None
-    return prop.get("number")
-
-
-def _parse_relation_id(prop: dict | None) -> str | None:
-    """Парсит Notion relation property и возвращает первый ID."""
-    if not prop or prop.get("type") != "relation":
-        return None
-    rel = prop.get("relation") or []
-    return rel[0]["id"] if rel else None
-
-
+@notion_query("list_pending", fallback=[])  # Graceful fallback для стабильности UI
 def list_pending(limit: int = 5) -> list[dict]:
     """
     Возвращает список открытых элементов из Review queue.
@@ -355,14 +320,12 @@ def list_pending(limit: int = 5) -> list[dict]:
         limit: Максимальное количество элементов
 
     Returns:
-        Список словарей с данными элементов
+        Список словарей с данными элементов (graceful fallback на [] при ошибках)
     """
     # Открытые статусы (не confirmed/rejected)
     OPEN_STATUSES = ["pending", "needs-review"]
 
-    client = get_notion_http_client()
-
-    try:
+    with get_notion_http_client() as client:
         # Фильтруем только открытые статусы
         payload = {
             "filter": {
@@ -388,14 +351,14 @@ def list_pending(limit: int = 5) -> list[dict]:
                 {
                     "page_id": page_id,
                     "short_id": _short_id(page_id),
-                    "text": _parse_rich_text(props.get("Commit text")),
-                    "direction": _parse_select(props.get("Direction")),
-                    "assignees": _parse_multi_select(props.get("Assignee")),
-                    "due_iso": _parse_date(props.get("Due")),
-                    "confidence": _parse_number(props.get("Confidence")),
-                    "reasons": _parse_multi_select(props.get("Reason")),
-                    "context": _parse_rich_text(props.get("Context")),
-                    "meeting_page_id": _parse_relation_id(props.get("Meeting")),
+                    "text": parse_rich_text(props.get("Commit text")),
+                    "direction": parse_select(props.get("Direction")),
+                    "assignees": parse_multi_select(props.get("Assignee")),
+                    "due_iso": parse_date(props.get("Due")),
+                    "confidence": parse_number(props.get("Confidence")),
+                    "reasons": parse_multi_select(props.get("Reason")),
+                    "context": parse_rich_text(props.get("Context")),
+                    "meeting_page_id": parse_relation_single(props.get("Meeting")),
                 }
             )
 
@@ -414,18 +377,13 @@ def list_pending(limit: int = 5) -> list[dict]:
 
             logger.info(f"Fallback query found {len(fallback_data.get('results', []))} total items")
             for item in fallback_data.get("results", [])[:3]:
-                status = _parse_select(item["properties"].get("Status"))
+                status = parse_select(item["properties"].get("Status"))
                 logger.info(f"Item status: '{status}'")
 
         return results
 
-    except Exception as e:
-        logger.error(f"Error in list_pending: {type(e).__name__}: {e}")
-        raise
-    finally:
-        client.close()
 
-
+@notion_query("get_by_short_id", fallback=None)  # Graceful fallback для стабильности
 def get_by_short_id(short_id: str) -> dict | None:
     """
     Находит элемент по короткому ID с поддержкой пагинации.
@@ -434,12 +392,11 @@ def get_by_short_id(short_id: str) -> dict | None:
         short_id: Короткий ID (последние 6 символов page_id)
 
     Returns:
-        Словарь с данными элемента или None
+        Словарь с данными элемента или None (graceful fallback при ошибках)
     """
     short_id = short_id.lower()
-    client = get_notion_http_client()
 
-    try:
+    with get_notion_http_client() as client:
         cursor: str | None = None
         while True:
             payload = {
@@ -464,14 +421,14 @@ def get_by_short_id(short_id: str) -> dict | None:
                     return {
                         "page_id": page_id,
                         "short_id": _short_id(page_id),
-                        "text": _parse_rich_text(props.get("Commit text")),
-                        "direction": _parse_select(props.get("Direction")),
-                        "assignees": _parse_multi_select(props.get("Assignee")),
-                        "due_iso": _parse_date(props.get("Due")),
-                        "confidence": _parse_number(props.get("Confidence")),
-                        "reasons": _parse_multi_select(props.get("Reason")),
-                        "context": _parse_rich_text(props.get("Context")),
-                        "meeting_page_id": _parse_relation_id(props.get("Meeting")),
+                        "text": parse_rich_text(props.get("Commit text")),
+                        "direction": parse_select(props.get("Direction")),
+                        "assignees": parse_multi_select(props.get("Assignee")),
+                        "due_iso": parse_date(props.get("Due")),
+                        "confidence": parse_number(props.get("Confidence")),
+                        "reasons": parse_multi_select(props.get("Reason")),
+                        "context": parse_rich_text(props.get("Context")),
+                        "meeting_page_id": parse_relation_single(props.get("Meeting")),
                     }
 
             # Проверяем, есть ли еще страницы
@@ -481,13 +438,8 @@ def get_by_short_id(short_id: str) -> dict | None:
 
         return None
 
-    except Exception as e:
-        logger.error(f"Error in get_by_short_id: {type(e).__name__}: {e}")
-        raise
-    finally:
-        client.close()
 
-
+@notion_update("update_review_fields")  # Strict handling для целостности данных
 def update_fields(
     page_id: str,
     *,
@@ -506,6 +458,9 @@ def update_fields(
 
     Returns:
         True если успешно обновлено
+
+    Raises:
+        NotionAPIError: При ошибках API (strict handling для целостности данных)
     """
     props: dict[str, Any] = {}
 
@@ -521,15 +476,7 @@ def update_fields(
     if not props:
         return True  # Нечего обновлять
 
-    client = get_notion_http_client()
-
-    try:
+    with get_notion_http_client() as client:
         response = client.patch(f"{NOTION_API}/pages/{page_id}", json={"properties": props})
         response.raise_for_status()
         return True
-
-    except Exception as e:
-        logger.error(f"Error in update_fields: {type(e).__name__}: {e}")
-        return False
-    finally:
-        client.close()

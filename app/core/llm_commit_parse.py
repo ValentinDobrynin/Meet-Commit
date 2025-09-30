@@ -72,7 +72,36 @@ def _call_llm_parse(text: str) -> dict[str, Any]:
         client.close()
 
 
-def _apply_role_fallbacks(llm_result: dict, user_name: str) -> tuple[str, str, str]:
+def _split_names(names_string: str) -> list[str]:
+    """
+    Разбивает строку с именами на отдельные имена.
+
+    Args:
+        names_string: Строка типа "Vlad Sklyanov, Sergey Lompa" или "Nodari и Lompa"
+
+    Returns:
+        Список отдельных имен
+    """
+    if not names_string or not names_string.strip():
+        return []
+
+    # Разбиваем по запятым и союзам
+    import re
+
+    # Заменяем союзы на запятые для унификации
+    normalized = re.sub(r"\s+(и|and|with|&|\+)\s+", ", ", names_string, flags=re.IGNORECASE)
+
+    # Разбиваем по запятым
+    names = [name.strip() for name in normalized.split(",")]
+
+    # Фильтруем пустые строки
+    names = [name for name in names if name]
+
+    logger.debug(f"Split names '{names_string}' -> {names}")
+    return names
+
+
+def _apply_role_fallbacks(llm_result: dict, user_name: str) -> tuple[list[str], str, str]:
     """
     Применяет fallback логику для ролей.
 
@@ -81,25 +110,27 @@ def _apply_role_fallbacks(llm_result: dict, user_name: str) -> tuple[str, str, s
         user_name: Имя пользователя
 
     Returns:
-        (assignee, from_person, direction)
+        (assignees_list, from_person, direction)
     """
-    # Исполнитель: если не указан, то пользователь
-    assignee = llm_result.get("assignee") or user_name
+    # Исполнители: разбиваем строку на список
+    assignee_raw = llm_result.get("assignee") or user_name
+    assignees = _split_names(assignee_raw) if assignee_raw else [user_name]
 
     # Заказчик: если не указан, то пользователь
     from_person = llm_result.get("from_person") or user_name
 
     # Direction зависит от того, кто исполнитель
-    direction = "mine" if assignee == user_name else "theirs"
+    # Если пользователь среди исполнителей - mine, иначе theirs
+    direction = "mine" if user_name in assignees else "theirs"
 
     logger.debug(
-        f"Role fallbacks: assignee={assignee}, from_person={from_person}, direction={direction}"
+        f"Role fallbacks: assignees={assignees}, from_person={from_person}, direction={direction}"
     )
-    return assignee, from_person, direction
+    return assignees, from_person, direction
 
 
 def _build_full_commit(
-    llm_result: dict, user_name: str, assignee: str, from_person: str, direction: str
+    llm_result: dict, user_name: str, assignees: list[str], from_person: str, direction: str
 ) -> dict:
     """Строит полный коммит из LLM данных и fallback значений."""
     from app.core.commit_normalize import build_key, build_title, normalize_assignees
@@ -112,9 +143,8 @@ def _build_full_commit(
     due_iso = llm_result.get("due")
 
     # Нормализуем исполнителей и заказчиков через people.json
-    raw_assignees = [assignee] if assignee else []
     normalized_assignees = normalize_assignees(
-        raw_assignees, []
+        assignees, []
     )  # Без фильтра по участникам встречи для LLM коммитов
 
     raw_from_person = [from_person] if from_person else []
@@ -166,16 +196,16 @@ def parse_commit_text(text: str, user_name: str) -> dict:
             llm_result = _call_llm_parse(text.strip())
 
             # 2. Применение fallback логики
-            assignee, from_person, direction = _apply_role_fallbacks(llm_result, user_name)
+            assignees, from_person, direction = _apply_role_fallbacks(llm_result, user_name)
 
             # 3. Построение полного коммита
             commit_data = _build_full_commit(
-                llm_result, user_name, assignee, from_person, direction
+                llm_result, user_name, assignees, from_person, direction
             )
 
             logger.info(
                 f"LLM parsed commit: '{commit_data['text']}' "
-                f"from {from_person} to {assignee} ({direction}), "
+                f"from {from_person} to {assignees} ({direction}), "
                 f"due {commit_data['due_iso'] or 'none'}, "
                 f"confidence {commit_data['confidence']:.2f}"
             )

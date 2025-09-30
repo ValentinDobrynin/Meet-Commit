@@ -6,12 +6,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.gateways.notion_parsers import (
+    parse_checkbox,
+    parse_number,
+    parse_rich_text,
+    parse_select,
+    parse_title,
+)
 from app.gateways.notion_tag_catalog import (
-    _parse_checkbox,
-    _parse_number,
-    _parse_rich_text,
-    _parse_select,
-    _parse_title,
     fetch_tag_catalog,
     get_tag_catalog_info,
     validate_tag_catalog_access,
@@ -21,63 +23,63 @@ from app.gateways.notion_tag_catalog import (
 class TestNotionParsers:
     """Тесты для парсеров Notion properties."""
 
-    def test_parse_rich_text_valid(self):
+    def testparse_rich_text_valid(self):
         """Тест парсинга валидного rich_text."""
         prop = {"rich_text": [{"text": {"content": "line1"}}, {"text": {"content": "line2"}}]}
 
-        result = _parse_rich_text(prop)
+        result = parse_rich_text(prop)
         assert result == "line1\nline2"
 
-    def test_parse_rich_text_empty(self):
+    def testparse_rich_text_empty(self):
         """Тест парсинга пустого rich_text."""
-        assert _parse_rich_text(None) == ""
-        assert _parse_rich_text({}) == ""
-        assert _parse_rich_text({"rich_text": []}) == ""
+        assert parse_rich_text(None) == ""
+        assert parse_rich_text({}) == ""
+        assert parse_rich_text({"rich_text": []}) == ""
 
-    def test_parse_select_valid(self):
+    def testparse_select_valid(self):
         """Тест парсинга валидного select."""
         prop = {"select": {"name": "Finance"}}
-        assert _parse_select(prop) == "Finance"
+        assert parse_select(prop) == "Finance"
 
-    def test_parse_select_empty(self):
+    def testparse_select_empty(self):
         """Тест парсинга пустого select."""
-        assert _parse_select(None) == ""
-        assert _parse_select({}) == ""
-        assert _parse_select({"select": None}) == ""
+        assert parse_select(None) == ""
+        assert parse_select({}) == ""
+        assert parse_select({"select": None}) == ""
 
-    def test_parse_number_valid(self):
+    def testparse_number_valid(self):
         """Тест парсинга валидного number."""
         prop = {"number": 2.5}
-        assert _parse_number(prop) == 2.5
+        assert parse_number(prop) == 2.5
 
-    def test_parse_number_default(self):
+    def testparse_number_default(self):
         """Тест парсинга number с дефолтным значением."""
-        assert _parse_number(None) == 1.0
-        assert _parse_number({}) == 1.0
-        assert _parse_number({"number": None}) == 1.0
+        assert parse_number(None) == 1.0
+        assert parse_number({}) == 1.0
+        assert parse_number({"number": None}) == 1.0
 
-    def test_parse_checkbox_valid(self):
+    def testparse_checkbox_valid(self):
         """Тест парсинга валидного checkbox."""
-        assert _parse_checkbox({"checkbox": True}) is True
-        assert _parse_checkbox({"checkbox": False}) is False
+        assert parse_checkbox({"checkbox": True}) is True
+        assert parse_checkbox({"checkbox": False}) is False
 
-    def test_parse_checkbox_default(self):
+    def testparse_checkbox_default(self):
         """Тест парсинга checkbox с дефолтным значением."""
-        assert _parse_checkbox(None) is False
-        assert _parse_checkbox({}) is False
+        assert parse_checkbox(None) is False
+        assert parse_checkbox({}) is False
 
-    def test_parse_title_valid(self):
+    def testparse_title_valid(self):
         """Тест парсинга валидного title."""
         prop = {"title": [{"text": {"content": "Test"}}, {"text": {"content": " Title"}}]}
 
-        result = _parse_title(prop)
+        result = parse_title(prop)
         assert result == "Test Title"
 
-    def test_parse_title_empty(self):
+    def testparse_title_empty(self):
         """Тест парсинга пустого title."""
-        assert _parse_title(None) == ""
-        assert _parse_title({}) == ""
-        assert _parse_title({"title": []}) == ""
+        assert parse_title(None) == ""
+        assert parse_title({}) == ""
+        assert parse_title({"title": []}) == ""
 
 
 class TestTagCatalogAccess:

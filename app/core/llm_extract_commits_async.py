@@ -58,39 +58,38 @@ def _load_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
 
 
-def _build_messages(text: str, attendees_en: list[str], meeting_date_iso: str) -> list[ChatCompletionMessageParam]:
+def _build_messages(
+    text: str, attendees_en: list[str], meeting_date_iso: str
+) -> list[ChatCompletionMessageParam]:
     """Строит сообщения для LLM."""
     prompt = _load_prompt()
-    
+
     # Контекст для LLM
     context = f"""
 Участники встречи: {', '.join(attendees_en) if attendees_en else 'не указаны'}
 Дата встречи: {meeting_date_iso}
 """
-    
+
     system_msg: ChatCompletionMessageParam = {
-        "role": "system", 
-        "content": f"{prompt}\n\nКонтекст:\n{context}"
+        "role": "system",
+        "content": f"{prompt}\n\nКонтекст:\n{context}",
     }
-    user_msg: ChatCompletionMessageParam = {
-        "role": "user", 
-        "content": text
-    }
-    
+    user_msg: ChatCompletionMessageParam = {"role": "user", "content": text}
+
     return [system_msg, user_msg]
 
 
 def _extract_json(raw_response: str) -> dict[str, Any]:
     """Извлекает JSON из ответа LLM."""
     # Попытка извлечь JSON из markdown блока
-    json_match = re.search(r'```json\s*\n(.*?)\n```', raw_response, re.DOTALL)
+    json_match = re.search(r"```json\s*\n(.*?)\n```", raw_response, re.DOTALL)
     if json_match:
         json_str = json_match.group(1)
     else:
         json_str = raw_response.strip()
-    
+
     try:
-        return json.loads(json_str)
+        return json.loads(json_str)  # type: ignore[no-any-return]
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse JSON: {json_str[:200]}...")
         raise RuntimeError(f"Некорректный JSON от LLM: {e}") from e
@@ -110,7 +109,7 @@ def _to_models(payload: dict[str, Any]) -> list[ExtractedCommit]:
         except ValidationError as e:
             logger.warning(f"Skipping invalid commit {i}: {item}, error: {e}")
             continue
-    
+
     return out
 
 
@@ -124,14 +123,14 @@ async def extract_commits_async(
 ) -> list[ExtractedCommit]:
     """
     Асинхронная версия извлечения коммитов через LLM.
-    
+
     Args:
         text: Текст встречи для анализа
         attendees_en: Список участников (канонические EN имена)
         meeting_date_iso: Дата встречи в формате YYYY-MM-DD
         model: Модель LLM (по умолчанию gpt-4o-mini)
         temperature: Температура для LLM
-        
+
     Returns:
         Список извлеченных коммитов
     """
@@ -177,7 +176,7 @@ async def extract_commits_async(
             # Парсим JSON и преобразуем в модели
             payload = _extract_json(raw)
             commits = _to_models(payload)
-            
+
             logger.info(f"Extracted {len(commits)} commits from LLM (async)")
             return commits
 

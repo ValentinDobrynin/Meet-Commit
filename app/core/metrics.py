@@ -240,7 +240,7 @@ class MetricNames:
     NOTION_QUERY_COMMITS = "notion.query_commits"
     NOTION_UPDATE_COMMIT_STATUS = "notion.update_commit_status"
     NOTION_CREATE_REVIEW = "notion.create_review"
-    
+
     # Асинхронные Notion операции
     NOTION_UPSERT_COMMITS_ASYNC = "notion.upsert_commits_async"
     NOTION_QUERY_COMMITS_ASYNC = "notion.query_commits_async"
@@ -257,6 +257,17 @@ class MetricNames:
 
     # Пайплайн этапы
     PIPELINE_TOTAL = "pipeline.total"
+
+    # People Miner v2
+    PEOPLE_MINER_INGEST = "people_miner.ingest"
+    PEOPLE_MINER_LIST = "people_miner.list"
+    PEOPLE_MINER_APPROVE = "people_miner.approve"
+    PEOPLE_MINER_BATCH_APPROVE = "people_miner.batch_approve"
+    PEOPLE_MINER_BATCH_REJECT = "people_miner.batch_reject"
+    PEOPLE_MINER_CANDIDATES_ADDED = "people_miner.candidates_added"
+    PEOPLE_MINER_CANDIDATES_UPDATED = "people_miner.candidates_updated"
+    PEOPLE_MINER_APPROVED = "people_miner.approved"
+    PEOPLE_MINER_REJECTED = "people_miner.rejected"
     PIPELINE_LLM_PHASE = "pipeline.llm_phase"
     PIPELINE_NOTION_PHASE = "pipeline.notion_phase"
     PIPELINE_TAGGING_PHASE = "pipeline.tagging_phase"

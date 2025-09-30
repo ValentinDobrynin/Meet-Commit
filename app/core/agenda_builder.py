@@ -51,7 +51,6 @@ def _query_commits(
     if not settings.commits_db_id:
         return []  # Graceful fallback если база Commits не настроена
 
-    client = get_notion_http_client()
     try:
         payload: dict[str, Any] = {
             "page_size": page_size,
@@ -63,13 +62,15 @@ def _query_commits(
         else:
             payload["sorts"] = [{"property": "Due", "direction": "ascending"}]
 
-        response = client.post(
-            f"{NOTION_API}/databases/{settings.commits_db_id}/query", json=payload
-        )
-        response.raise_for_status()
+        # Используем context manager для правильного lifecycle
+        with get_notion_http_client() as client:
+            response = client.post(
+                f"{NOTION_API}/databases/{settings.commits_db_id}/query", json=payload
+            )
+            response.raise_for_status()
 
-        results = response.json().get("results", [])
-        return [_map_commit_page(page) for page in results]
+            results = response.json().get("results", [])
+            return [_map_commit_page(page) for page in results]
 
     except Exception as e:
         # Логируем ошибку, но не прерываем работу
@@ -79,16 +80,12 @@ def _query_commits(
         logger.warning(f"Commits database query failed: {e}. Returning empty results.")
         return []
 
-    finally:
-        client.close()
-
 
 def _query_review(filter_: dict[str, Any], page_size: int = 50) -> list[dict[str, Any]]:
     """Запрос элементов ревью из Notion."""
     if not settings.review_db_id:
         return []  # Graceful fallback если база Review не настроена
 
-    client = get_notion_http_client()
     try:
         payload = {
             "page_size": page_size,
@@ -96,13 +93,15 @@ def _query_review(filter_: dict[str, Any], page_size: int = 50) -> list[dict[str
             "sorts": [{"timestamp": "last_edited_time", "direction": "descending"}],
         }
 
-        response = client.post(
-            f"{NOTION_API}/databases/{settings.review_db_id}/query", json=payload
-        )
-        response.raise_for_status()
+        # Используем context manager для правильного lifecycle
+        with get_notion_http_client() as client:
+            response = client.post(
+                f"{NOTION_API}/databases/{settings.review_db_id}/query", json=payload
+            )
+            response.raise_for_status()
 
-        results = response.json().get("results", [])
-        return [_map_review_page(page) for page in results]
+            results = response.json().get("results", [])
+            return [_map_review_page(page) for page in results]
 
     except Exception as e:
         # Логируем ошибку, но не прерываем работу
@@ -111,9 +110,6 @@ def _query_review(filter_: dict[str, Any], page_size: int = 50) -> list[dict[str
         logger = logging.getLogger(__name__)
         logger.warning(f"Review database query failed: {e}. Continuing without review data.")
         return []
-
-    finally:
-        client.close()
 
 
 def _map_review_page(page: dict[str, Any]) -> dict[str, Any]:
@@ -158,7 +154,7 @@ def _format_commit_line(commit: dict[str, Any], *, show_requester: bool = False)
         who = ", ".join(assignees) if assignees else "—"
         who_emoji = "👤"  # Исполнитель
 
-    due = commit.get("due_date") or "—"
+    due = commit.get("due_iso") or "—"
     status_emoji = {"open": "🟥", "done": "✅", "dropped": "❌"}.get(
         commit.get("status", "open"), "⬜"
     )

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from app.core.llm_commit_parse_async import parse_commit_text_async
+from app.core.llm_commit_parse import parse_commit_text
 from app.core.llm_extract_commits_async import extract_commits_async
 from app.gateways.notion_commits_async import upsert_commits_async
 
@@ -16,52 +16,60 @@ class TestAsyncLLMCommitParse:
     """Тесты асинхронного LLM парсинга коммитов."""
 
     @pytest.mark.asyncio
-    @patch("app.core.llm_commit_parse_async.get_async_openai_client")
-    async def test_parse_commit_text_async_success(self, mock_get_client):
+    @patch("app.core.llm_commit_parse.get_async_openai_client")
+    async def test_parse_commit_text_success(self, mock_get_client):
         """Тест успешного асинхронного парсинга."""
         # Мокаем LLM ответ
         mock_client = AsyncMock()
         mock_response = Mock()
         mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '{"text": "подготовить отчет", "assignee": "Sasha", "confidence": 0.8}'
+        mock_response.choices[
+            0
+        ].message.content = '{"text": "подготовить отчет", "assignee": "Sasha", "confidence": 0.8}'
         mock_response.usage = Mock()
         mock_response.usage.prompt_tokens = 100
         mock_response.usage.completion_tokens = 50
         mock_response.usage.total_tokens = 150
-        
+
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
-        
+
         # Мокаем вспомогательные функции
-        with patch("app.core.llm_commit_parse_async._load_prompt", return_value="test prompt"):
+        with patch("app.core.llm_commit_parse._load_prompt", return_value="test prompt"):
             with patch("app.core.commit_normalize.build_title", return_value="Test Title"):
                 with patch("app.core.commit_normalize.build_key", return_value="test-key"):
                     with patch("app.core.tags.tag_text", return_value=["Topic/Test"]):
-                        with patch("app.core.commit_normalize.normalize_assignees", side_effect=lambda x, _: x):
-                            
-                            result = await parse_commit_text_async("Саша подготовит отчет", "Valentin")
-                            
+                        with patch(
+                            "app.core.commit_normalize.normalize_assignees",
+                            side_effect=lambda x, _: x,
+                        ):
+                            result = await parse_commit_text(
+                                "Саша подготовит отчет", "Valentin"
+                            )
+
                             assert result["text"] == "подготовить отчет"
                             assert result["assignees"] == ["Sasha"]
                             assert result["direction"] == "theirs"
                             assert result["confidence"] == 0.8
 
     @pytest.mark.asyncio
-    @patch("app.core.llm_commit_parse_async.get_async_openai_client")
-    async def test_parse_commit_text_async_fallback(self, mock_get_client):
+    @patch("app.core.llm_commit_parse.get_async_openai_client")
+    async def test_parse_commit_text_fallback(self, mock_get_client):
         """Тест fallback при ошибке LLM."""
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
         mock_get_client.return_value = mock_client
-        
-        with patch("app.core.llm_commit_parse_async._load_prompt", return_value="test prompt"):
+
+        with patch("app.core.llm_commit_parse._load_prompt", return_value="test prompt"):
             with patch("app.core.commit_normalize.build_title", return_value="Fallback Title"):
                 with patch("app.core.commit_normalize.build_key", return_value="fallback-key"):
                     with patch("app.core.tags.tag_text", return_value=[]):
-                        with patch("app.core.commit_normalize.normalize_assignees", side_effect=lambda x, _: x):
-                            
-                            result = await parse_commit_text_async("Тестовая задача", "Valentin")
-                            
+                        with patch(
+                            "app.core.commit_normalize.normalize_assignees",
+                            side_effect=lambda x, _: x,
+                        ):
+                            result = await parse_commit_text("Тестовая задача", "Valentin")
+
                             assert result["text"] == "Тестовая задача"
                             assert result["assignees"] == ["Valentin"]
                             assert result["direction"] == "mine"
@@ -78,7 +86,7 @@ class TestAsyncLLMExtractCommits:
         mock_client = AsyncMock()
         mock_response = Mock()
         mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = '''
+        mock_response.choices[0].message.content = """
         {
             "commits": [
                 {
@@ -89,21 +97,17 @@ class TestAsyncLLMExtractCommits:
                 }
             ]
         }
-        '''
+        """
         mock_response.usage = Mock()
         mock_response.usage.prompt_tokens = 200
         mock_response.usage.completion_tokens = 100
         mock_response.usage.total_tokens = 300
-        
+
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
-        
-        result = await extract_commits_async(
-            "Текст встречи", 
-            ["Valentin", "Sasha"], 
-            "2025-09-26"
-        )
-        
+
+        result = await extract_commits_async("Текст встречи", ["Valentin", "Sasha"], "2025-09-26")
+
         assert len(result) == 1
         assert result[0].text == "подготовить презентацию"
         assert result[0].direction == "theirs"
@@ -117,10 +121,10 @@ class TestAsyncLLMExtractCommits:
         mock_response = Mock()
         mock_response.choices = [Mock()]
         mock_response.choices[0].message.content = ""
-        
+
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
-        
+
         with pytest.raises(RuntimeError, match="LLM вернул пустой ответ"):
             await extract_commits_async("Текст", ["User"], "2025-09-26")
 
@@ -135,28 +139,27 @@ class TestAsyncNotionCommits:
         """Тест асинхронного создания коммитов."""
         mock_settings.commits_db_id = "test-db-id"
         mock_settings.notion_token = "test-token"
-        
+
         # Мокаем HTTP клиент
         mock_client = AsyncMock()
         mock_async_client.return_value.__aenter__.return_value = mock_client
-        
+
         # Мокаем query response (коммит не найден)
         mock_query_response = Mock()
         mock_query_response.json.return_value = {"results": []}
         mock_client.post.return_value = mock_query_response
-        
+
         # Мокаем create response
         mock_create_response = Mock()
         mock_create_response.json.return_value = {"id": "new-commit-id"}
         mock_client.post.return_value = mock_create_response
-        
+
         # Мокаем _query_by_key_async
         with patch("app.gateways.notion_commits_async._query_by_key_async", return_value=None):
             with patch("app.gateways.notion_commits_async._props_commit", return_value={}):
-                
                 commits = [{"key": "test-key", "text": "Test commit"}]
                 result = await upsert_commits_async("meeting-id", commits)
-                
+
                 assert "created" in result
                 assert "updated" in result
 
@@ -165,7 +168,7 @@ class TestAsyncNotionCommits:
     async def test_upsert_commits_async_empty_list(self, mock_settings):
         """Тест обработки пустого списка коммитов."""
         result = await upsert_commits_async("meeting-id", [])
-        
+
         assert result == {"created": [], "updated": []}
 
     @pytest.mark.asyncio
@@ -173,7 +176,7 @@ class TestAsyncNotionCommits:
     async def test_upsert_commits_async_no_db_id(self, mock_settings):
         """Тест ошибки при отсутствии database ID."""
         mock_settings.commits_db_id = None
-        
+
         with pytest.raises(RuntimeError, match="COMMITS_DB_ID не настроен"):
             await upsert_commits_async("meeting-id", [{"key": "test"}])
 
@@ -185,22 +188,22 @@ class TestPerformanceComparison:
     async def test_async_vs_sync_performance_concept(self):
         """Концептуальный тест производительности async vs sync."""
         import time
-        
+
         # Имитируем async операцию
         async def mock_async_operation():
             await asyncio.sleep(0.01)  # 10ms имитация
             return "result"
-        
+
         # Имитируем sync операцию через executor
         def mock_sync_operation():
             time.sleep(0.01)  # 10ms имитация
             return "result"
-        
+
         # Тестируем параллельное выполнение async
         start_time = time.time()
         async_results = await asyncio.gather(*[mock_async_operation() for _ in range(5)])
         async_duration = time.time() - start_time
-        
+
         # Тестируем последовательное выполнение через executor
         start_time = time.time()
         executor_results = []
@@ -208,7 +211,7 @@ class TestPerformanceComparison:
             result = await asyncio.get_event_loop().run_in_executor(None, mock_sync_operation)
             executor_results.append(result)
         executor_duration = time.time() - start_time
-        
+
         # Async должен быть быстрее при параллельных операциях
         assert len(async_results) == 5
         assert len(executor_results) == 5
