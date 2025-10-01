@@ -84,7 +84,72 @@ Business/Market:
     - "marketing"       # исключаем маркетинг
     - "marketplace"     # исключаем площадки
   weight: 1.0
-  
+
+Business/Eats:
+  patterns:
+    - "доставка еды"
+    - "рестораны"
+    - "доставка из магазинов"
+    - "еда"
+    - "\\beats\\b"
+    - "ресторан"
+    - "food delivery"
+  exclude:
+    - "еда\\.ru"        # исключаем домены
+  weight: 1.2
+
+Business/Delivery:
+  patterns:
+    - "доставка"
+    - "\\bndd\\b"
+    - "next day delivery"
+    - "express"
+    - "экспресс"
+    - "cargo"
+    - "карго"
+    - "логистика"
+    - "delivery"
+  exclude:
+    - "доставка еды"    # исключаем пересечение с Eats
+    - "express\\.js"    # исключаем технические термины
+  weight: 1.1
+
+Business/Taxi:
+  patterns:
+    - "такси"
+    - "taxi"
+    - "mobility"
+    - "мобильность"
+    - "ridetech"
+    - "райдтех"
+    - "водитель"
+    - "поездка"
+    - "ride"
+  exclude:
+    - "taxi\\.com"      # исключаем домены
+  weight: 1.0
+
+Business/Sharing:
+  patterns:
+    - "самокаты"
+    - "самокат"
+    - "kicksharing"
+    - "кикшеринг"
+    - "драйв"
+    - "\\bdrive\\b"
+    - "беризаряд"
+    - "бери заряд"
+    - "powerbank"
+    - "повербанк"
+    - "повербанки"
+    - "зарядки"
+    - "зарядка"
+    - "шеринг"
+    - "sharing"
+  exclude:
+    - "google drive"    # исключаем облачные сервисы
+    - "hard drive"      # исключаем технические термины
+  weight: 0.9
 
 # ====== ПРОЕКТЫ ======
 Projects/EVM:

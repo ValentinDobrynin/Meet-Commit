@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -603,6 +604,163 @@ def query_commits_by_assignee(assignee_name: str, limit: int = PAGE_SIZE) -> lis
     except Exception as e:
         logger.error(f"Error in query_commits_by_assignee: {e}")
         return []
+
+
+# ====== FUNCTIONS FOR RETAGGING PIPELINE ======
+
+
+@notion_query("iter_commits", fallback=[])  # Graceful fallback для стабильности
+def iter_commits(
+    since_iso: str | None = None, page_size: int = 100
+) -> Iterator[list[dict[str, Any]]]:
+    """
+    Итератор по всем коммитам с пагинацией для retagging pipeline.
+
+    Args:
+        since_iso: Фильтр по дате создания (ISO формат YYYY-MM-DD), опционально
+        page_size: Размер страницы для пагинации
+
+    Yields:
+        Списки коммитов (батчи) с полями: id, Text, Tags, Context
+    """
+    if not settings.commits_db_id:
+        logger.warning("COMMITS_DB_ID не настроен, возвращаем пустой итератор")
+        return
+
+    try:
+        has_more = True
+        next_cursor = None
+
+        while has_more:
+            # Подготавливаем payload для запроса
+            payload: dict[str, Any] = {"page_size": page_size}
+
+            if next_cursor:
+                payload["start_cursor"] = next_cursor  # type: ignore[unreachable]
+
+            # Добавляем фильтр по дате если указан
+            if since_iso:
+                payload["filter"] = {
+                    "property": "Created time",
+                    "created_time": {"on_or_after": since_iso},
+                }
+
+            # Сортировка по дате создания для стабильности
+            payload["sorts"] = [{"property": "Created time", "direction": "ascending"}]
+
+            # Выполняем запрос через существующую функцию
+            response = _query_commits(
+                filter_=payload.get("filter"), sorts=payload.get("sorts"), page_size=page_size
+            )
+
+            results = response.get("results", [])
+
+            if results:
+                # Преобразуем в нужный формат для retagging
+                commits = []
+                for page in results:
+                    commit = _map_commit_page_for_retagging(page)
+                    commits.append(commit)
+
+                logger.debug(f"Yielding batch of {len(commits)} commits")
+                yield commits
+
+            # Проверяем есть ли еще страницы (используем has_more из response если есть)
+            has_more = response.get("has_more", False) and len(results) == page_size
+            next_cursor = response.get("next_cursor")
+
+    except Exception as e:
+        logger.error(f"Error iterating commits: {e}")
+        # Генератор не может использовать return с значением
+        pass
+
+
+def _map_commit_page_for_retagging(page: dict[str, Any]) -> dict[str, Any]:
+    """
+    Преобразует страницу Notion коммита в формат для retagging.
+
+    Args:
+        page: Страница из Notion API
+
+    Returns:
+        Словарь с полями коммита для retagging
+    """
+    props = page.get("properties", {})
+
+    def _extract_field(field_name: str, field_type: str) -> Any:
+        """Извлекает значение поля определенного типа."""
+        if field_name not in props:
+            return None
+
+        field_data = props[field_name]
+
+        if field_type == "rich_text":
+            text_list = field_data.get("rich_text", [])
+            return "".join(item.get("plain_text", "") for item in text_list)
+        elif field_type == "multi_select":
+            multi_select_list = field_data.get("multi_select", [])
+            return [item.get("name") for item in multi_select_list if item.get("name")]
+
+        return None
+
+    return {
+        "id": page.get("id"),
+        "Text": _extract_field("Text", "rich_text") or "",
+        "Tags": _extract_field("Tags", "multi_select") or [],
+        "Context": _extract_field("Context", "rich_text") or "",  # Если есть поле Context
+    }
+
+
+@notion_update("update_commit_tags")  # Strict handling для целостности данных
+def update_commit_tags(page_id: str, tags: list[str]) -> bool:
+    """
+    Обновляет теги коммита для retagging pipeline.
+
+    Args:
+        page_id: ID страницы коммита
+        tags: Новый список тегов
+
+    Returns:
+        True если успешно обновлено
+
+    Raises:
+        RuntimeError: При ошибках API
+    """
+    # Очищаем page_id
+    clean_page_id = page_id.replace("-", "").replace(" ", "")
+
+    if len(clean_page_id) != 32:
+        raise ValueError(f"Invalid page ID format: {page_id}")
+
+    # Форматируем в UUID
+    formatted_id = (
+        f"{clean_page_id[:8]}-{clean_page_id[8:12]}-{clean_page_id[12:16]}-"
+        f"{clean_page_id[16:20]}-{clean_page_id[20:32]}"
+    )
+
+    try:
+        with get_notion_http_client() as client:
+            # Подготавливаем properties для обновления
+            properties = {"Tags": {"multi_select": [{"name": tag} for tag in tags if tag]}}
+
+            # Обновляем страницу
+            response = client.patch(
+                f"{NOTION_API}/pages/{formatted_id}", json={"properties": properties}
+            )
+
+            if response.status_code == 404:
+                raise RuntimeError(f"Commit page not found: {page_id}")
+            elif response.status_code != 200:
+                raise RuntimeError(f"Notion API error {response.status_code}: {response.text}")
+
+            response.raise_for_status()
+
+            logger.info(f"Updated tags for commit {page_id}: {len(tags)} tags")
+            return True
+
+    except Exception as e:
+        logger.error(f"Error updating commit tags {page_id}: {e}")
+        raise RuntimeError(f"Failed to update commit tags: {e}") from e
 
 
 @notion_update("update_commit_status")  # Strict handling для целостности данных

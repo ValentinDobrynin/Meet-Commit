@@ -105,7 +105,22 @@ class TestUnifiedTagging:
             assert "Finance/Audit" in tags  # от v1
             assert "Business/Lavka" in tags  # от v1
             assert "People/Sasha Katanov" in tags  # от v1
-            assert tags == sorted(tags)
+
+            # Проверяем детерминированную сортировку по семействам
+            # People должны быть первыми, затем Business, Finance, Topic
+            people_tags = [t for t in tags if t.startswith("People/")]
+            business_tags = [t for t in tags if t.startswith("Business/")]
+            finance_tags = [t for t in tags if t.startswith("Finance/")]
+
+            if people_tags and business_tags:
+                people_idx = tags.index(people_tags[0])
+                business_idx = tags.index(business_tags[0])
+                assert people_idx < business_idx, "People tags should come before Business tags"
+
+            if business_tags and finance_tags:
+                business_idx = tags.index(business_tags[0])
+                finance_idx = tags.index(finance_tags[0])
+                assert business_idx < finance_idx, "Business tags should come before Finance tags"
 
     def test_tag_text_explicit_mode(self, temp_rules_file, mock_people_data):
         """Тест явного указания режима через параметр."""

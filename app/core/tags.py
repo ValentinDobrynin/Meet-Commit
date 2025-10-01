@@ -175,65 +175,38 @@ def _map_v0_to_v1(tags_v0: set[str]) -> set[str]:
 
 
 def _merge_tags_with_priority(tags_v0: set[str], tags_v1: set[str]) -> list[str]:
-    """Улучшенное объединение тегов с приоритетом v1 и детальными метриками."""
-    # Маппим v0 теги в канон
+    """
+    Объединение тегов с использованием нового dedup_fuse модуля.
+
+    Заменяет старую логику на новую детерминированную систему дедупликации
+    с улучшенными метриками и специальной обработкой People/* тегов.
+    """
+    from app.core.tags_dedup import dedup_fuse
+
+    # Маппим v0 теги в канон для совместимости
     mapped_v0 = _map_v0_to_v1(tags_v0)
 
-    # Строим индекс для сравнения
-    v1_index: dict[str, str] = {}
-    v0_index: dict[str, str] = {}
-    duplicates_removed = 0
-    people_tags_preserved = 0
-    v1_priority_wins = 0
+    # Используем новую систему дедупликации
+    result, metrics = dedup_fuse(mapped_v0, tags_v1)
 
-    # Индексируем v1 теги (приоритет)
-    for tag in tags_v1:
-        normalized = _normalize_for_comparison(tag)
-        v1_index[normalized] = tag
+    # Обновляем существующие метрики для обратной совместимости
+    _stats["deduplication"]["v0_tags_total"] += metrics.total_v0
+    _stats["deduplication"]["v1_tags_total"] += metrics.total_v1
+    _stats["deduplication"]["merged_tags_total"] += metrics.unique_result
+    _stats["deduplication"]["duplicates_removed"] += metrics.conflicts_resolved
+    _stats["deduplication"]["people_tags_preserved"] += metrics.people_tags_preserved
+    _stats["deduplication"]["v1_priority_wins"] += metrics.v1_priority_wins
 
-    # Индексируем маппированные v0 теги
-    for tag in mapped_v0:
-        normalized = _normalize_for_comparison(tag)
-        if normalized in v1_index:
-            # Конфликт: v1 имеет приоритет
-            v1_priority_wins += 1
-            duplicates_removed += 1
-            logger.debug(f"v1 priority: '{tag}' → '{v1_index[normalized]}'")
-        else:
-            # Нет конфликта, добавляем в v0 индекс
-            v0_index[normalized] = tag
+    # Логируем детальные метрики новой системы
+    logger.debug(f"New dedup system metrics: {metrics.as_dict()}")
 
-    # Объединяем с фильтрацией
-    result_tags: set[str] = set()
-
-    # Добавляем все v1 теги (приоритет)
-    result_tags.update(v1_index.values())
-
-    # Добавляем v0 теги с умной фильтрацией
-    for _normalized, tag in v0_index.items():
-        if tag.startswith("People/"):
-            # People теги всегда добавляем (даже если есть конфликт)
-            result_tags.add(tag)
-            people_tags_preserved += 1
-            logger.debug(f"People tag preserved: '{tag}'")
-        else:
-            # Остальные только если нет конфликта
-            result_tags.add(tag)
-
-    # Обновляем метрики дедупликации
-    _stats["deduplication"]["v0_tags_total"] += len(tags_v0)
-    _stats["deduplication"]["v1_tags_total"] += len(tags_v1)
-    _stats["deduplication"]["merged_tags_total"] += len(result_tags)
-    _stats["deduplication"]["duplicates_removed"] += duplicates_removed
-    _stats["deduplication"]["people_tags_preserved"] += people_tags_preserved
-    _stats["deduplication"]["v1_priority_wins"] += v1_priority_wins
-
-    result = sorted(result_tags)
+    # Логируем совместимость со старой системой
     logger.info(
         f"Smart dedup: v0={len(tags_v0)}→{len(mapped_v0)}, v1={len(tags_v1)}, "
-        f"result={len(result)}, duplicates_removed={duplicates_removed}, "
-        f"people_preserved={people_tags_preserved}, v1_wins={v1_priority_wins}"
+        f"result={len(result)}, conflicts_resolved={metrics.conflicts_resolved}, "
+        f"people_preserved={metrics.people_tags_preserved}, v1_wins={metrics.v1_priority_wins}"
     )
+
     return result
 
 
@@ -301,8 +274,21 @@ def _tag_cached(mode: str, kind: str, text_hash: str, text: str) -> list[str]:
             return []
 
 
-def tag_text(text: str, *, kind: str = "meeting", meta: dict | None = None) -> list[str]:
-    """Единая точка входа для тегирования."""
+def tag_text(
+    text: str, *, kind: str = "meeting", meta: dict | None = None, mode: str | None = None
+) -> list[str]:
+    """
+    Единая точка входа для тегирования.
+
+    Args:
+        text: Текст для анализа
+        kind: Тип контента ("meeting" или "commit")
+        meta: Метаданные (опционально)
+        mode: Режим тегирования ("v0", "v1", "both"), если None - берется из настроек
+
+    Returns:
+        Список канонических тегов
+    """
     if not text or not text.strip():
         return []
 
@@ -310,7 +296,7 @@ def tag_text(text: str, *, kind: str = "meeting", meta: dict | None = None) -> l
         start_time = time.time()
 
         # Валидируем параметры
-        mode = _validate_mode(settings.tags_mode)
+        mode = _validate_mode(mode or settings.tags_mode)
         kind = _validate_kind(kind)
 
         # Обновляем статистику

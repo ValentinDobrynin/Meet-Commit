@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from typing import Any
 
 from app.core.clients import get_notion_http_client
-from app.gateways.error_handling import notion_update, notion_validation
+from app.gateways.error_handling import notion_query, notion_update, notion_validation
 from app.gateways.notion_parsers import (
     extract_page_fields,
 )
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -148,3 +150,118 @@ def validate_meeting_access(page_id: str) -> bool:
     except Exception as e:
         logger.warning(f"Meeting {page_id} not accessible for retag: {e}")
         return False
+
+
+# ====== FUNCTIONS FOR RETAGGING PIPELINE ======
+
+
+@notion_query("iter_meetings", fallback=[])  # Graceful fallback для стабильности
+def iter_meetings(
+    since_iso: str | None = None, page_size: int = 100
+) -> Iterator[list[dict[str, Any]]]:
+    """
+    Итератор по всем встречам с пагинацией для retagging pipeline.
+
+    Args:
+        since_iso: Фильтр по дате (ISO формат YYYY-MM-DD), опционально
+        page_size: Размер страницы для пагинации
+
+    Yields:
+        Списки встреч (батчи) с полями: id, Name, Summary MD, Tags, Date
+    """
+    if not settings.notion_db_meetings_id:
+        logger.warning("NOTION_DB_MEETINGS_ID не настроен, возвращаем пустой итератор")
+        return
+
+    try:
+        with get_notion_http_client() as client:
+            has_more = True
+            next_cursor = None
+
+            while has_more:
+                # Подготавливаем payload для запроса
+                payload: dict[str, Any] = {"page_size": page_size}
+
+                if next_cursor:
+                    payload["start_cursor"] = next_cursor  # type: ignore[unreachable]
+
+                # Добавляем фильтр по дате если указан
+                if since_iso:
+                    payload["filter"] = {"property": "Date", "date": {"on_or_after": since_iso}}
+
+                # Сортировка по дате для стабильности
+                payload["sorts"] = [{"property": "Date", "direction": "ascending"}]
+
+                # Выполняем запрос
+                response = client.post(
+                    f"{NOTION_API}/databases/{settings.notion_db_meetings_id}/query", json=payload
+                )
+                response.raise_for_status()
+
+                data = response.json()
+                results = data.get("results", [])
+
+                if results:
+                    # Преобразуем в нужный формат
+                    meetings = []
+                    for page in results:
+                        meeting = _map_meeting_page(page)
+                        meetings.append(meeting)
+
+                    logger.debug(f"Yielding batch of {len(meetings)} meetings")
+                    yield meetings
+
+                # Проверяем есть ли еще страницы
+                has_more = data.get("has_more", False)
+                next_cursor = data.get("next_cursor")
+
+    except Exception as e:
+        logger.error(f"Error iterating meetings: {e}")
+        # Генератор не может использовать return с значением
+        pass
+
+
+def _map_meeting_page(page: dict[str, Any]) -> dict[str, Any]:
+    """
+    Преобразует страницу Notion встречи в формат для retagging.
+
+    Args:
+        page: Страница из Notion API
+
+    Returns:
+        Словарь с полями встречи
+    """
+    props = page.get("properties", {})
+
+    def _extract_field(field_name: str, field_type: str) -> Any:
+        """Извлекает значение поля определенного типа."""
+        if field_name not in props:
+            return None
+
+        field_data = props[field_name]
+
+        if field_type == "title":
+            title_list = field_data.get("title", [])
+            return "".join(item.get("plain_text", "") for item in title_list)
+        elif field_type == "rich_text":
+            text_list = field_data.get("rich_text", [])
+            return "".join(item.get("plain_text", "") for item in text_list)
+        elif field_type == "multi_select":
+            multi_select_list = field_data.get("multi_select", [])
+            return [item.get("name") for item in multi_select_list if item.get("name")]
+        elif field_type == "date":
+            date_data = field_data.get("date")
+            return date_data.get("start") if date_data else None
+
+        return None
+
+    return {
+        "id": page.get("id"),
+        "Name": _extract_field("Name", "title") or "",
+        "Summary MD": _extract_field("Summary MD", "rich_text") or "",
+        "Tags": _extract_field("Tags", "multi_select") or [],
+        "Date": _extract_field("Date", "date"),
+    }
+
+
+# update_meeting_tags для retagging pipeline - используется существующая функция выше

@@ -555,6 +555,11 @@ async def admin_help_handler(message: Message) -> None:
         "🔍 <code>/retag &lt;meeting_id&gt; dry-run</code> - Показать diff тегов\n"
         "♻️ <code>/retag &lt;meeting_id&gt;</code> - Пересчитать и обновить теги\n"
         "🏷️ <code>/review_tags &lt;meeting_id&gt;</code> - Интерактивное ревью тегов\n\n"
+        "🆕 <b>Массовое перетегирование:</b>\n"
+        "🔄 <code>/retag_all [параметры]</code> - Массовое обновление тегов\n"
+        "   💡 <i>Пример: /retag_all meetings dry=1</i>\n"
+        "❓ <code>/retag_help</code> - Подробная справка по перетегированию\n"
+        "   📋 Параметры: meetings|commits, since=дата, limit=N, mode=v0|v1|both, dry=0|1\n\n"
         "⚡ <b>Производительность клиентов:</b>\n"
         "📊 <code>/clients_stats</code> - Статистика клиентов и connection pooling\n"
         "🧹 <code>/clients_cleanup</code> - Очистка кэша Notion SDK клиентов\n\n"
@@ -578,8 +583,13 @@ async def admin_help_handler(message: Message) -> None:
         "♻️ <b>Дедупликация встреч:</b>\n"
         "🎛️ <code>/dedup_status</code> - Статус дедупликации встреч\n"
         "🔧 <code>/dedup_toggle</code> - Включить/отключить дедупликацию\n\n"
+        "🔧 <b>Настройки и диагностика:</b>\n"
         "❓ <code>/admin_help</code> - Показать эту справку\n"
         "🔧 <code>/admin_config</code> - Показать настройки админских прав\n\n"
+        "⚠️ <b>Важно:</b>\n"
+        "• Команды массового обновления всегда начинайте с dry=1\n"
+        "• Большие операции могут занять несколько минут\n"
+        "• Все действия логируются для аудита\n\n"
         "<i>Доступно только администраторам бота</i>"
     )
 
@@ -1141,3 +1151,166 @@ async def agenda_stats_handler(message: Message) -> None:
             f"❌ <b>Ошибка получения статистики agenda</b>\n\n<code>{str(e)}</code>",
             parse_mode="HTML",
         )
+
+
+# ====== RETAGGING PIPELINE COMMANDS ======
+
+
+@router.message(F.text.regexp(r"^/retag_all\b"))
+async def retag_all_handler(message: Message) -> None:
+    """
+    Массовое перетегирование встреч или коммитов.
+
+    Синтаксис: /retag_all [meetings|commits] [since=YYYY-MM-DD] [limit=N] [mode=v0|v1|both] [dry=0|1]
+
+    Примеры:
+    /retag_all meetings dry=1
+    /retag_all commits since=2024-12-01 limit=100 mode=both dry=0
+    """
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        # Парсим аргументы команды
+        text = message.text or ""
+        args = text.split()[1:]  # Убираем /retag_all
+
+        # Значения по умолчанию
+        db = "meetings"
+        since_iso = None
+        limit = None
+        mode = "both"
+        dry_run = True
+
+        # Парсим аргументы
+        for arg in args:
+            if arg in ("meetings", "commits"):
+                db = arg
+            elif arg.startswith("since="):
+                since_iso = arg.split("=", 1)[1]
+            elif arg.startswith("limit="):
+                try:
+                    limit = int(arg.split("=", 1)[1])
+                except ValueError:
+                    await message.answer(f"❌ Неверный формат лимита: {arg}")
+                    return
+            elif arg.startswith("mode="):
+                mode = arg.split("=", 1)[1]
+            elif arg.startswith("dry="):
+                dry_value = arg.split("=", 1)[1]
+                dry_run = dry_value != "0"
+
+        # Валидируем параметры
+        from app.core.retag_service import estimate_retag_time, validate_retag_params
+
+        is_valid, error_msg = validate_retag_params(db, since_iso, limit, mode)
+        if not is_valid:
+            await message.answer(f"❌ {error_msg}")
+            return
+
+        # Показываем оценку времени для больших операций
+        if not dry_run and (limit is None or limit > 100):
+            estimate = estimate_retag_time(db, since_iso, limit)
+            await message.answer(
+                f"⚠️ <b>Массовое обновление {db}</b>\n\n"
+                f"📊 Примерная оценка:\n"
+                f"• Записей: ~{estimate['estimated_items']}\n"
+                f"• Время: ~{estimate['estimated_time_minutes']} мин\n\n"
+                f"🔄 Начинаю обработку..."
+            )
+
+        # Выполняем операцию
+        # Приводим типы для mypy
+        from typing import Literal, cast
+
+        from app.core.retag_service import retag
+
+        db_typed = cast(
+            Literal["meetings", "commits"], db if db in ("meetings", "commits") else "meetings"
+        )
+        mode_typed = cast(
+            Literal["v0", "v1", "both"], mode if mode in ("v0", "v1", "both") else "both"
+        )
+
+        stats = retag(
+            db=db_typed, since_iso=since_iso, limit=limit, mode=mode_typed, dry_run=dry_run
+        )
+
+        # Форматируем результат
+        dry_prefix = "🧪 [DRY-RUN] " if dry_run else "✅ "
+
+        result_message = (
+            f"{dry_prefix}<b>Retag {db} завершен</b>\n\n"
+            f"📊 <b>Обработано:</b>\n"
+            f"• Просканировано: {stats.scanned}\n"
+            f"• Обновлено: {stats.updated}\n"
+            f"• Пропущено: {stats.skipped}\n"
+            f"• Ошибок: {stats.errors}\n\n"
+            f"⏱️ <b>Производительность:</b>\n"
+            f"• Общее время: {stats.latency_s:.1f}с\n"
+            f"• Среднее на запись: {stats.avg_processing_time_ms:.1f}мс\n\n"
+            f"🏷️ <b>Теги:</b>\n"
+            f"• До: {stats.total_tags_before}\n"
+            f"• После: {stats.total_tags_after}\n"
+        )
+
+        # Добавляем детали дедупликации если есть
+        if stats.dedup_metrics_total:
+            result_message += "\n🔄 <b>Дедупликация:</b>\n"
+            for key, value in stats.dedup_metrics_total.items():
+                if isinstance(value, int | float) and value > 0:
+                    result_message += f"• {key}: {value}\n"
+
+        await message.answer(result_message, parse_mode="HTML")
+
+        # Логируем операцию
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(
+            f"Admin {user_id} executed retag_all: db={db}, since={since_iso}, "
+            f"limit={limit}, mode={mode}, dry_run={dry_run}, "
+            f"stats={stats.as_dict()}"
+        )
+
+    except Exception as e:
+        logger.error(f"Error in retag_all_handler: {e}")
+        await message.answer(
+            f"❌ <b>Ошибка выполнения retag_all</b>\n\n<code>{str(e)}</code>", parse_mode="HTML"
+        )
+
+
+@router.message(F.text == "/retag_help")
+async def retag_help_handler(message: Message) -> None:
+    """Показывает справку по командам перетегирования."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    help_text = (
+        "🔄 <b>Справка по командам перетегирования</b>\n\n"
+        "📋 <b>Основная команда:</b>\n"
+        "<code>/retag_all [параметры]</code>\n\n"
+        "🎛️ <b>Параметры:</b>\n"
+        "• <code>meetings</code> или <code>commits</code> - тип базы\n"
+        "• <code>since=YYYY-MM-DD</code> - фильтр по дате\n"
+        "• <code>limit=N</code> - максимум записей (1-10000)\n"
+        "• <code>mode=v0|v1|both</code> - режим тегирования\n"
+        "• <code>dry=0|1</code> - тестовый режим (1=да, 0=нет)\n\n"
+        "💡 <b>Примеры использования:</b>\n"
+        "<code>/retag_all meetings dry=1</code>\n"
+        "└ Тестовый прогон всех встреч\n\n"
+        "<code>/retag_all commits since=2024-12-01 limit=100</code>\n"
+        "└ Коммиты с 1 декабря, максимум 100, тестовый режим\n\n"
+        "<code>/retag_all meetings mode=both dry=0</code>\n"
+        "└ Реальное обновление всех встреч двойным тегированием\n\n"
+        "⚠️ <b>Внимание:</b>\n"
+        "• Всегда начинайте с <code>dry=1</code> для проверки\n"
+        "• Большие операции могут занять несколько минут\n"
+        "• Операция необратима (кроме dry-run режима)\n\n"
+        "🔍 <b>Дополнительные команды:</b>\n"
+        "<code>/retag_help</code> - эта справка\n"
+        "<code>/tags_stats</code> - статистика тегирования\n"
+        "<code>/tags_validate</code> - валидация правил\n"
+    )
+
+    await message.answer(help_text, parse_mode="HTML")
