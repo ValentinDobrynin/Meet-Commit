@@ -65,21 +65,17 @@ def mock_state():
 class TestUtilityFunctions:
     """Тесты вспомогательных функций."""
 
-    @patch("app.bot.handlers_direct_commit.load_people")
-    def test_get_people_suggestions(self, mock_load_people):
+    @patch("app.core.people_activity.get_top_people_by_activity")
+    def test_get_people_suggestions(self, mock_get_top_people):
         """Тест получения подсказок людей."""
-        mock_load_people.return_value = [
-            {"name_en": "John Doe"},
-            {"name_en": "Jane Smith"},
-            {"name_en": ""},  # Пустое имя должно игнорироваться
-            {"name_ru": "Иван Петров"},  # Нет name_en
-        ]
+        mock_get_top_people.return_value = ["John Doe", "Jane Smith", "Bob Wilson"]
 
         suggestions = _get_people_suggestions()
 
         assert "John Doe" in suggestions
         assert "Jane Smith" in suggestions
-        assert len(suggestions) == 2
+        assert "Bob Wilson" in suggestions
+        assert len(suggestions) == 3
 
     def test_build_people_keyboard(self):
         """Тест создания клавиатуры с людьми."""
@@ -556,11 +552,12 @@ class TestErrorHandling:
         call_args = mock_callback.message.edit_text.call_args[0][0]
         assert "Ошибка создания коммита" in call_args
 
-    @patch("app.bot.handlers_direct_commit.load_people")
-    def test_get_people_suggestions_error(self, mock_load_people):
+    @patch("app.core.people_activity.get_top_people_by_activity")
+    def test_get_people_suggestions_error(self, mock_get_top_people):
         """Тест обработки ошибки при загрузке людей."""
-        mock_load_people.side_effect = Exception("Database error")
+        mock_get_top_people.side_effect = Exception("Database error")
 
         suggestions = _get_people_suggestions()
 
-        assert suggestions == []  # Должен вернуть пустой список при ошибке
+        # Теперь при ошибке возвращается fallback список
+        assert len(suggestions) > 0  # Fallback должен вернуть что-то

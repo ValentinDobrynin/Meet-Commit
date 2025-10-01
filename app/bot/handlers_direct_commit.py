@@ -21,29 +21,56 @@ router = Router()
 
 
 def _get_people_suggestions() -> list[str]:
-    """Получает список людей для подсказок."""
+    """Получает топ людей по активности для подсказок."""
     try:
-        people = load_people()
-        return [person.get("name_en", "") for person in people if person.get("name_en")][:10]
+        from app.core.people_activity import get_top_people_by_activity
+
+        # Используем ту же логику что и в /agenda
+        top_people = get_top_people_by_activity(min_count=3, max_count=8, min_score=1.0)
+        return top_people
     except Exception as e:
         logger.warning(f"Failed to load people suggestions: {e}")
-        return []
+        # Fallback к старой логике
+        try:
+            people = load_people()
+            return [person.get("name_en", "") for person in people if person.get("name_en")][:6]
+        except Exception:
+            return []
 
 
 def _build_people_keyboard(suggestions: list[str], callback_prefix: str) -> InlineKeyboardMarkup:
-    """Создает клавиатуру с подсказками людей."""
+    """Создает клавиатуру с подсказками людей (как в /agenda)."""
     buttons = []
 
-    # Добавляем подсказки людей (по 2 в ряд)
-    for i in range(0, min(len(suggestions), 6), 2):
+    # Добавляем топ людей (по 2 в ряд)
+    for i in range(0, len(suggestions), 2):
         row = []
         for j in range(i, min(i + 2, len(suggestions))):
             person = suggestions[j]
             row.append(
-                InlineKeyboardButton(text=person, callback_data=f"{callback_prefix}:{person}")
+                InlineKeyboardButton(
+                    text=f"👤 {person}", callback_data=f"{callback_prefix}:{person}"
+                )
             )
         if row:
             buttons.append(row)
+
+    # Добавляем кнопку "Other people" если есть еще люди
+    try:
+        from app.core.people_activity import get_all_people_from_dictionary
+
+        other_people = get_all_people_from_dictionary(exclude_top=suggestions)
+
+        if other_people:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text="👥 Other people...", callback_data=f"{callback_prefix}:other"
+                    )
+                ]
+            )
+    except Exception as e:
+        logger.warning(f"Failed to add other people button: {e}")
 
     # Кнопки управления
     buttons.append(
@@ -720,3 +747,165 @@ async def cancel_direct_commit(callback: CallbackQuery, state: FSMContext) -> No
 
     user_id = callback.from_user.id if callback.from_user else "unknown"
     logger.info(f"Direct commit creation cancelled by user {user_id}")
+
+
+# ====== ОБРАБОТЧИКИ "OTHER PEOPLE" ======
+
+
+@router.callback_query(F.data.startswith("direct_commit:from:other"))
+async def callback_from_other_people(callback: CallbackQuery, state: FSMContext) -> None:
+    """Показать других людей для выбора заказчика."""
+    await _show_direct_commit_other_people(callback, state, "from", page=0)
+
+
+@router.callback_query(F.data.startswith("direct_commit:to:other"))
+async def callback_to_other_people(callback: CallbackQuery, state: FSMContext) -> None:
+    """Показать других людей для выбора исполнителя."""
+    await _show_direct_commit_other_people(callback, state, "to", page=0)
+
+
+@router.callback_query(F.data.startswith("direct_commit:from:other:page:"))
+async def callback_from_other_people_page(callback: CallbackQuery, state: FSMContext) -> None:
+    """Переход на конкретную страницу других людей для заказчика."""
+    try:
+        if not callback.data:
+            raise ValueError("No callback data")
+        page = int(callback.data.split(":")[-1])
+        await _show_direct_commit_other_people(callback, state, "from", page)
+    except (ValueError, IndexError):
+        await callback.answer("❌ Ошибка в номере страницы", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("direct_commit:to:other:page:"))
+async def callback_to_other_people_page(callback: CallbackQuery, state: FSMContext) -> None:
+    """Переход на конкретную страницу других людей для исполнителя."""
+    try:
+        if not callback.data:
+            raise ValueError("No callback data")
+        page = int(callback.data.split(":")[-1])
+        await _show_direct_commit_other_people(callback, state, "to", page)
+    except (ValueError, IndexError):
+        await callback.answer("❌ Ошибка в номере страницы", show_alert=True)
+
+
+async def _show_direct_commit_other_people(
+    callback: CallbackQuery, state: FSMContext, role: str, page: int = 0
+) -> None:
+    """Показывает страницу других людей для direct commit."""
+    try:
+        from app.core.people_activity import (
+            get_all_people_from_dictionary,
+            get_top_people_by_activity,
+        )
+
+        # Получаем топ людей для исключения
+        top_people = get_top_people_by_activity()
+        other_people = get_all_people_from_dictionary(exclude_top=top_people)
+
+        if not other_people:
+            await callback.answer("❌ Нет других людей в словаре", show_alert=True)
+            return
+
+        # Пагинация
+        per_page = 8
+        total_pages = (len(other_people) + per_page - 1) // per_page
+        page = max(0, min(page, total_pages - 1))
+
+        start_idx = page * per_page
+        end_idx = start_idx + per_page
+        page_people = other_people[start_idx:end_idx]
+
+        # Создаем клавиатуру
+        buttons = []
+
+        # Добавляем людей этой страницы (по 2 в ряд)
+        for i in range(0, len(page_people), 2):
+            row = []
+            for j in range(i, min(i + 2, len(page_people))):
+                person = page_people[j]
+                row.append(
+                    InlineKeyboardButton(
+                        text=f"👤 {person}", callback_data=f"direct_commit:{role}:{person}"
+                    )
+                )
+            if row:
+                buttons.append(row)
+
+        # Навигация
+        nav_row = []
+        if page > 0:
+            nav_row.append(
+                InlineKeyboardButton(
+                    text="← Назад", callback_data=f"direct_commit:{role}:other:page:{page-1}"
+                )
+            )
+
+        nav_row.append(InlineKeyboardButton(text=f"{page+1}/{total_pages}", callback_data="noop"))
+
+        if page < total_pages - 1:
+            nav_row.append(
+                InlineKeyboardButton(
+                    text="Вперед →", callback_data=f"direct_commit:{role}:other:page:{page+1}"
+                )
+            )
+
+        if nav_row:
+            buttons.append(nav_row)
+
+        # Кнопка возврата к топу
+        buttons.append(
+            [InlineKeyboardButton(text="🔙 К топу", callback_data=f"direct_commit:{role}:back")]
+        )
+
+        # Определяем заголовок
+        role_text = "заказчика" if role == "from" else "исполнителя"
+
+        # Обновляем сообщение
+        text = (
+            f"👥 <b>Other people</b> (страница {page+1}/{total_pages})\n\n"
+            f"Выберите {role_text}:\n"
+            f"<i>Показано {len(page_people)} из {len(other_people)} людей</i>"
+        )
+
+        await callback.message.edit_text(  # type: ignore[union-attr]
+            text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error showing other people page {page} for {role}: {e}")
+        await callback.answer("❌ Ошибка при загрузке списка людей", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("direct_commit:from:back"))
+async def callback_from_back_to_top(callback: CallbackQuery, state: FSMContext) -> None:
+    """Возврат к топу людей для заказчика."""
+    suggestions = _get_people_suggestions()
+    keyboard = _build_people_keyboard(suggestions, "direct_commit:from")
+
+    await callback.message.edit_text(  # type: ignore[union-attr]
+        "👤 <b>Шаг 2/4:</b> Кто поставил задачу?\n\n"
+        "💡 <i>Выберите заказчика или укажите тип задачи:</i>",
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("direct_commit:to:back"))
+async def callback_to_back_to_top(callback: CallbackQuery, state: FSMContext) -> None:
+    """Возврат к топу людей для исполнителя."""
+    suggestions = _get_people_suggestions()
+    keyboard = _build_people_keyboard(suggestions, "direct_commit:to")
+
+    data = await state.get_data()
+    from_person = data.get("from_person", "Неизвестно")
+
+    await callback.message.edit_text(  # type: ignore[union-attr]
+        f"✅ <b>Заказчик:</b> {from_person}\n\n"
+        "👥 <b>Шаг 3/4:</b> Кто исполнитель?\n\n"
+        "💡 <i>Выберите, кто будет выполнять задачу:</i>",
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+    await callback.answer()

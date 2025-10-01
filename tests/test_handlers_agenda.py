@@ -603,12 +603,15 @@ class TestErrorScenarios:
         # Импортируем и тестируем функцию с ошибкой
         from app.bot.handlers_agenda import callback_save_agenda
 
-        # Мокаем ошибку в процессе сохранения
-        with patch("app.bot.handlers_agenda.logger"):
+        # Мокаем ошибку в agenda_builder для имитации сбоя
+        with patch("app.core.agenda_builder.build_for_meeting") as mock_build:
+            mock_build.side_effect = Exception("Test error")
+
             await callback_save_agenda(mock_callback)
 
-            # Проверяем, что показана заглушка (пока не реализовано полное сохранение)
-            mock_callback.answer.assert_called_once_with("💾 Сохранение в Notion...")
+            # Проверяем, что была попытка сохранения и обработка ошибки
+            mock_callback.answer.assert_any_call("💾 Сохранение в Notion...")
+            mock_callback.answer.assert_any_call("❌ Ошибка при сохранении", show_alert=True)
             mock_callback.message.answer.assert_called_once()
 
 

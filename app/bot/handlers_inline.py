@@ -290,7 +290,7 @@ async def cb_review_delete(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("review_assign:"))
 async def cb_review_assign(callback: CallbackQuery):
-    """Предлагает назначить исполнителя через текстовую команду."""
+    """Интерактивное назначение исполнителя с кнопками."""
     try:
         if not callback.data:
             await callback.answer("❌ Ошибка данных", show_alert=True)
@@ -302,17 +302,23 @@ async def cb_review_assign(callback: CallbackQuery):
             await callback.answer("❌ Элемент не найден", show_alert=True)
             return
 
-        await callback.answer()
+        await callback.answer("👤 Выберите исполнителя")
+
+        # Используем интерактивный интерфейс из handlers_assign
+        from app.bot.handlers_assign import _build_assignee_keyboard
+
+        task_text = item.get("text", "")[:100]
+        if len(item.get("text", "")) > 100:
+            task_text += "..."
+
         if callback.message:
-            await callback.message.answer(
-                f"👤 <b>Назначение исполнителя для [{short_id}]</b>\n\n"
-                f"📝 Задача: {item.get('text', '')[:100]}\n\n"
-                f"💡 <b>Шаг 1:</b> Введите команду:\n"
-                f"<code>/assign {short_id} &lt;имя&gt;</code>\n\n"
-                f"<i>Например: /assign {short_id} Daniil</i>\n\n"
-                f"💡 <b>Шаг 2:</b> После назначения нажмите кнопку <b>✅ Confirm</b> "
-                f"чтобы перенести задачу в Commits\n\n"
-                f"🔄 <i>Или используйте кнопку \"✅ Confirm All\" для подтверждения всех задач сразу</i>"
+            await callback.message.edit_text(  # type: ignore[union-attr]
+                f"👤 <b>Назначение исполнителя</b>\n\n"
+                f"📋 <b>Задача [{short_id}]:</b>\n"
+                f"<i>{task_text}</i>\n\n"
+                f"Выберите исполнителя:",
+                parse_mode="HTML",
+                reply_markup=_build_assignee_keyboard(short_id),
             )
 
     except Exception as e:

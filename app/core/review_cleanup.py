@@ -161,7 +161,7 @@ def text_fingerprint(text: str) -> str:
         return "0" * 16
 
     normalized = normalize_text_for_comparison(text)
-    return hashlib.md5(normalized.encode()).hexdigest()[:16]
+    return hashlib.md5(normalized.encode(), usedforsecurity=False).hexdigest()[:16]  # nosec B324
 
 
 def auto_archive_old_reviews(

@@ -146,7 +146,8 @@ async def cmd_help(msg: Message, state: FSMContext):
         "✅ <code>/confirm &lt;id&gt;</code> - Подтвердить коммит из очереди\n"
         "❌ <code>/delete &lt;id&gt;</code> - Удалить коммит из очереди\n"
         "🔄 <code>/flip &lt;id&gt;</code> - Изменить direction коммита\n"
-        "👤 <code>/assign &lt;id&gt; &lt;имя&gt;</code> - Назначить исполнителя\n"
+        "👤 <code>/assign &lt;id&gt;</code> - Назначить исполнителя (интерактивно)\n"
+        "👤 <code>/assign &lt;id&gt; &lt;имя&gt;</code> - Назначить исполнителя (ручной ввод)\n"
         "🧹 <code>/review_clean</code> - Очистка старых записей и дубликатов (админы)\n"
         "📊 <code>/review_stats</code> - Статистика Review Queue (админы)\n\n"
         "📎 <b>Обработка файлов:</b>\n"
@@ -772,8 +773,8 @@ async def cmd_flip(msg: Message):
 
 
 @router.message(F.text.regexp(r"^/assign\s+\S+\s+.+$", flags=re.I))
-async def cmd_assign(msg: Message):
-    """Назначает исполнителя на карточку."""
+async def cmd_assign_manual(msg: Message):
+    """Назначает исполнителя на карточку (ручной ввод - legacy)."""
     try:
         parts = (msg.text or "").strip().split(maxsplit=2)
         if len(parts) < 3:
@@ -788,11 +789,19 @@ async def cmd_assign(msg: Message):
             await msg.answer(f"❌ Карточка [{short_id}] не найдена. Проверьте /review.")
             return
 
-        # Разбираем имена (через пробел или запятую)
-        raw_list = [x.strip() for x in raw_names.replace(",", " ").split() if x.strip()]
+        # Сначала пытаемся найти полное имя как есть, потом разбиваем
+        # Это исправляет проблему с "Sergey Lompa" -> ["Sergey", "Lompa"]
 
-        # Нормализуем через словарь people.json
-        normalized_assignees = normalize_assignees(raw_list, attendees_en=[])
+        # Попытка 1: полное имя как есть
+        full_name_normalized = normalize_assignees([raw_names.strip()], attendees_en=[])
+
+        if full_name_normalized:
+            # Полное имя найдено в словаре
+            normalized_assignees = full_name_normalized
+        else:
+            # Попытка 2: разбиваем по пробелам и запятым
+            raw_list = [x.strip() for x in raw_names.replace(",", " ").split() if x.strip()]
+            normalized_assignees = normalize_assignees(raw_list, attendees_en=[])
 
         if not normalized_assignees:
             await msg.answer(f"❌ Не удалось распознать исполнителя(ей): {raw_names}")

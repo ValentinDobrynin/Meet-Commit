@@ -392,3 +392,211 @@ def get_sync_status() -> dict[str, Any]:
         "cache_available": RULES_CACHE_PATH.exists(),
         "notion_accessible": validate_tag_catalog_access(),
     }
+
+
+def sync_yaml_to_notion(dry_run: bool = False) -> TagsSyncResult:
+    """
+    Синхронизирует правила тегирования из локального YAML в Notion Tag Catalog.
+
+    Args:
+        dry_run: Если True, только показывает что будет сделано без применения
+
+    Returns:
+        TagsSyncResult с результатами синхронизации
+    """
+    try:
+        logger.info(f"Starting YAML → Notion sync (dry_run={dry_run})")
+
+        # Загружаем правила из YAML
+        from pathlib import Path
+
+        import yaml
+
+        rules_path = Path(settings.tagger_v1_rules_file)
+        if not rules_path.is_absolute():
+            project_root = Path(__file__).parent.parent.parent
+            rules_path = project_root / rules_path
+
+        if not rules_path.exists():
+            return TagsSyncResult(
+                success=False,
+                source="yaml",
+                rules_count=0,
+                error=f"YAML file not found: {rules_path}",
+            )
+
+        with open(rules_path, encoding="utf-8") as f:
+            raw_data = yaml.safe_load(f) or {}
+
+        # Конвертируем в список правил
+        yaml_rules = []
+        for tag_name, spec in raw_data.items():
+            if isinstance(spec, list):
+                # Старый формат: ["pattern1", "pattern2"]
+                rule = {
+                    "name": tag_name,
+                    "patterns": spec,
+                    "exclude": [],
+                    "weight": 1.0,
+                    "kind": tag_name.split("/")[0] if "/" in tag_name else "Topic",
+                }
+            elif isinstance(spec, dict):
+                # Новый формат: {patterns: [...], exclude: [...], weight: 1.5}
+                rule = {
+                    "name": tag_name,
+                    "patterns": spec.get("patterns", []),
+                    "exclude": spec.get("exclude", []),
+                    "weight": spec.get("weight", 1.0),
+                    "kind": spec.get(
+                        "kind", tag_name.split("/")[0] if "/" in tag_name else "Topic"
+                    ),
+                }
+            else:
+                continue
+
+            yaml_rules.append(rule)
+
+        if not yaml_rules:
+            return TagsSyncResult(
+                success=False,
+                source="yaml",
+                rules_count=0,
+                error="No valid rules found in YAML file",
+            )
+
+        logger.info(f"Loaded {len(yaml_rules)} rules from YAML")
+
+        # Проверяем доступ к Notion
+        if not validate_tag_catalog_access():
+            return TagsSyncResult(
+                success=False,
+                source="notion",
+                rules_count=0,
+                error="Notion Tag Catalog not accessible",
+            )
+
+        # Загружаем существующие правила из Notion
+        from app.gateways.notion_tag_catalog import (
+            create_tag_rule,
+            fetch_tag_catalog,
+            update_tag_rule,
+        )
+
+        existing_rules = fetch_tag_catalog()
+
+        # Отладочная информация о структуре правил из Notion
+        logger.debug(
+            f"First Notion rule structure: {existing_rules[0] if existing_rules else 'None'}"
+        )
+
+        existing_by_name = {}
+        for rule in existing_rules:
+            # В Notion правила используют поле "tag" вместо "name"
+            rule_name = rule.get("tag") or rule.get("name")
+            if rule_name:
+                existing_by_name[rule_name] = rule
+            else:
+                logger.warning(f"Notion rule missing 'tag'/'name' field: {rule}")
+
+        logger.info(
+            f"Found {len(existing_rules)} existing rules in Notion, {len(existing_by_name)} with valid names"
+        )
+
+        # Подсчитываем изменения
+        to_create = []
+        to_update = []
+        kind_breakdown = {}
+
+        for yaml_rule in yaml_rules:
+            rule_name = yaml_rule["name"]
+            rule_kind = yaml_rule.get("kind", "Unknown")
+
+            # Подсчитываем по категориям
+            kind_breakdown[rule_kind] = kind_breakdown.get(rule_kind, 0) + 1
+
+            if rule_name in existing_by_name:
+                # Проверяем нужно ли обновление
+                existing_rule = existing_by_name[rule_name]
+                if _rules_differ(yaml_rule, existing_rule):
+                    to_update.append((yaml_rule, existing_rule))
+            else:
+                # Новое правило
+                to_create.append(yaml_rule)
+
+        total_changes = len(to_create) + len(to_update)
+
+        if dry_run:
+            # Dry-run режим - только показываем что будет сделано
+            return TagsSyncResult(
+                success=True,
+                source="yaml-preview",
+                rules_count=total_changes,
+                kind_breakdown=kind_breakdown,
+                error=f"Preview: {len(to_create)} to create, {len(to_update)} to update",
+            )
+
+        # Применяем изменения
+        created_count = 0
+        updated_count = 0
+
+        # Создаем новые правила
+        for rule in to_create:
+            try:
+                create_tag_rule(rule)
+                created_count += 1
+                logger.debug(f"Created rule: {rule['name']}")
+            except Exception as e:
+                logger.warning(f"Failed to create rule {rule['name']}: {e}")
+
+        # Обновляем существующие правила
+        for yaml_rule, existing_rule in to_update:
+            try:
+                update_tag_rule(existing_rule["id"], yaml_rule)
+                updated_count += 1
+                logger.debug(f"Updated rule: {yaml_rule['name']}")
+            except Exception as e:
+                logger.warning(f"Failed to update rule {yaml_rule['name']}: {e}")
+
+        # Создаем результат для сохранения метаданных
+        result_for_metadata = TagsSyncResult(
+            success=True,
+            source="yaml-to-notion",
+            rules_count=created_count + updated_count,
+            kind_breakdown=kind_breakdown,
+        )
+        _save_sync_metadata(result_for_metadata)
+
+        logger.info(
+            f"YAML → Notion sync completed: {created_count} created, {updated_count} updated"
+        )
+
+        return TagsSyncResult(
+            success=True,
+            source="yaml-to-notion",
+            rules_count=created_count + updated_count,
+            kind_breakdown=kind_breakdown,
+            error=f"{created_count} created, {updated_count} updated"
+            if total_changes > 0
+            else "No changes needed",
+        )
+
+    except Exception as e:
+        logger.error(f"Error in YAML → Notion sync: {e}")
+        return TagsSyncResult(success=False, source="yaml-to-notion", rules_count=0, error=str(e))
+
+
+def _rules_differ(yaml_rule: dict[str, Any], notion_rule: dict[str, Any]) -> bool:
+    """Проверяет отличаются ли правила между YAML и Notion."""
+    # Сравниваем ключевые поля
+    yaml_patterns = set(yaml_rule.get("patterns", []))
+    notion_patterns = set(notion_rule.get("patterns", []))
+
+    yaml_exclude = set(yaml_rule.get("exclude", []))
+    notion_exclude = set(notion_rule.get("exclude", []))
+
+    return (
+        yaml_patterns != notion_patterns
+        or yaml_exclude != notion_exclude
+        or yaml_rule.get("weight", 1.0) != notion_rule.get("weight", 1.0)
+        or yaml_rule.get("kind", "") != notion_rule.get("kind", "")
+    )

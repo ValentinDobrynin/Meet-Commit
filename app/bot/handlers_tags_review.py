@@ -124,14 +124,14 @@ def _build_tags_keyboard(session: TagReviewSession) -> InlineKeyboardMarkup:
     visible_tags = session.working_tags[:8]
 
     for i, tag in enumerate(visible_tags):
-        # Сокращаем длинные теги для отображения
-        display_tag = tag if len(tag) <= 25 else f"{tag[:22]}..."
+        # Делаем кнопку тега на всю ширину для лучшей читаемости
+        display_tag = tag if len(tag) <= 45 else f"{tag[:42]}..."
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f"❌ {i+1}", callback_data=f"tagrev:drop:{session.meeting_id}:{i}"
+                    text=f"❌ {i+1}. {display_tag}",
+                    callback_data=f"tagrev:drop:{session.meeting_id}:{i}",
                 ),
-                InlineKeyboardButton(text=f"🏷️ {display_tag}", callback_data="noop"),
             ]
         )
 

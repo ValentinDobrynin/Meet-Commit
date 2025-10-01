@@ -197,7 +197,23 @@ class TestSpecializedFunctions:
             assert "Finance/IFRS" in tags
             assert "Finance/Audit" in tags
             assert "Business/Lavka" in tags
-            assert tags == sorted(tags)
+            # После изменений теги сортируются по семействам: People, Business, Finance, Topic
+            # Проверяем что People теги идут первыми
+            people_tags = [tag for tag in tags if tag.startswith("People/")]
+            business_tags = [tag for tag in tags if tag.startswith("Business/")]
+            finance_tags = [tag for tag in tags if tag.startswith("Finance/")]
+
+            if people_tags and business_tags:
+                people_index = tags.index(people_tags[0])
+                business_index = tags.index(business_tags[0])
+                assert people_index < business_index, "People tags should come before Business tags"
+
+            if business_tags and finance_tags:
+                business_index = tags.index(business_tags[0])
+                finance_index = tags.index(finance_tags[0])
+                assert (
+                    business_index < finance_index
+                ), "Business tags should come before Finance tags"
 
     def test_tag_text_for_commit(self, temp_rules_file, mock_people_data):
         """Тест тегирования коммитов."""

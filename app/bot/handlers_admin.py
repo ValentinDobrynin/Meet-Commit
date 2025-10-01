@@ -564,8 +564,10 @@ async def admin_help_handler(message: Message) -> None:
         "📊 <code>/clients_stats</code> - Статистика клиентов и connection pooling\n"
         "🧹 <code>/clients_cleanup</code> - Очистка кэша Notion SDK клиентов\n\n"
         "🔄 <b>Notion синхронизация:</b>\n"
-        "📥 <code>/sync_tags</code> - Синхронизировать правила из Notion Tag Catalog\n"
-        "🔍 <code>/sync_tags dry-run</code> - Проверить синхронизацию без применения\n"
+        "📥 <code>/sync_tags</code> - Синхронизация Notion → YAML (по умолчанию)\n"
+        "📥 <code>/sync_tags from-notion</code> - Синхронизация Notion → YAML\n"
+        "📤 <code>/sync_tags to-notion</code> - Синхронизация YAML → Notion\n"
+        "🔍 <code>/sync_tags to-notion dry-run</code> - Предварительный просмотр\n"
         "📊 <code>/sync_status</code> - Статус последней синхронизации\n\n"
         "👥 <b>Управление людьми:</b>\n"
         "🧩 <code>/people_miner</code> - Интерактивная верификация кандидатов (v1)\n"
@@ -588,6 +590,12 @@ async def admin_help_handler(message: Message) -> None:
         "♻️ <b>Дедупликация встреч:</b>\n"
         "🎛️ <code>/dedup_status</code> - Статус дедупликации встреч\n"
         "🔧 <code>/dedup_toggle</code> - Включить/отключить дедупликацию\n\n"
+        "🌐 <b>Облачная миграция:</b>\n"
+        "📊 <code>/migration_status</code> - Статус миграции в облако\n"
+        "🎯 <code>/migration_context</code> - Контекст для восстановления сессии\n"
+        "⏭️ <code>/migration_next</code> - Следующие действия для выполнения\n"
+        "✅ <code>/migration_task &lt;task_id&gt; &lt;status&gt;</code> - Обновить статус задачи\n"
+        "   💡 <i>Пример: /migration_task create_people_catalog_db done</i>\n\n"
         "🔧 <b>Настройки и диагностика:</b>\n"
         "❓ <code>/admin_help</code> - Показать эту справку\n"
         "🔧 <code>/admin_config</code> - Показать настройки админских прав\n\n"
@@ -811,9 +819,11 @@ async def review_tags_handler(message: Message, state: FSMContext) -> None:
         await message.answer(f"❌ <b>Ошибка запуска ревью тегов</b>\n\n<code>{str(e)}</code>")
 
 
-@router.message(F.text.regexp(r"^/sync_tags(\s+dry-run)?$"))
+@router.message(
+    F.text.regexp(r"^/sync_tags(\s+(from-notion|to-notion|dry-run|to-notion\s+dry-run))?$")
+)
 async def sync_tags_handler(message: Message) -> None:
-    """Синхронизирует правила тегирования из Notion Tag Catalog."""
+    """Синхронизирует правила тегирования между YAML и Notion Tag Catalog."""
     if not _is_admin(message):
         await message.answer("❌ Команда доступна только администраторам")
         return
@@ -823,19 +833,38 @@ async def sync_tags_handler(message: Message) -> None:
             await message.answer("❌ Неправильный формат команды")
             return
 
-        # Проверяем режим dry-run
-        is_dry_run = "dry-run" in message.text
+        # Парсим направление и режим
+        text = message.text.lower()
+        is_dry_run = "dry-run" in text
+
+        if "to-notion" in text:
+            direction = "to-notion"
+            direction_text = "YAML → Notion"
+        elif "from-notion" in text:
+            direction = "from-notion"
+            direction_text = "Notion → YAML"
+        else:
+            # По умолчанию from-notion (как было раньше)
+            direction = "from-notion"
+            direction_text = "Notion → YAML"
 
         await message.answer(
-            f"🔄 <b>Синхронизация правил тегирования{'(dry-run)' if is_dry_run else ''}</b>\n\n"
-            "⏳ Подключаюсь к Notion Tag Catalog..."
+            f"🔄 <b>Синхронизация правил тегирования</b>\n\n"
+            f"📊 <b>Направление:</b> {direction_text}\n"
+            f"🧪 <b>Режим:</b> {'Предварительный просмотр' if is_dry_run else 'Применение изменений'}\n\n"
+            "⏳ Выполняю синхронизацию..."
         )
 
         # Импортируем функции синхронизации
-        from app.core.tags_notion_sync import smart_sync
+        if direction == "from-notion":
+            from app.core.tags_notion_sync import smart_sync
 
-        # Выполняем синхронизацию
-        result = smart_sync(dry_run=is_dry_run)
+            result = smart_sync(dry_run=is_dry_run)
+        else:
+            # to-notion - новая функциональность
+            from app.core.tags_notion_sync import sync_yaml_to_notion
+
+            result = sync_yaml_to_notion(dry_run=is_dry_run)
 
         if result.success:
             # Формируем сообщение об успехе
@@ -1283,6 +1312,195 @@ async def retag_all_handler(message: Message) -> None:
         logger.error(f"Error in retag_all_handler: {e}")
         await message.answer(
             f"❌ <b>Ошибка выполнения retag_all</b>\n\n<code>{str(e)}</code>", parse_mode="HTML"
+        )
+
+
+# ====== CLOUD MIGRATION TRACKING COMMANDS ======
+
+
+@router.message(F.text == "/migration_status")
+async def migration_status_handler(message: Message) -> None:
+    """Показывает текущий статус миграции в облако."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        from app.core.migration_tracker import get_migration_summary
+
+        summary = get_migration_summary()
+
+        await message.answer(
+            f"🌐 <b>Статус миграции в облако</b>\n\n<pre>{summary}</pre>", parse_mode="HTML"
+        )
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} requested migration status")
+
+    except Exception as e:
+        logger.error(f"Error in migration_status_handler: {e}")
+        await message.answer(
+            f"❌ <b>Ошибка получения статуса миграции</b>\n\n<code>{str(e)}</code>",
+            parse_mode="HTML",
+        )
+
+
+@router.message(F.text == "/migration_context")
+async def migration_context_handler(message: Message) -> None:
+    """Показывает контекст для восстановления сессии миграции."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        from app.core.migration_tracker import get_current_context
+
+        context = get_current_context()
+
+        # Разбиваем длинный контекст на части для Telegram
+        max_length = 4000
+        if len(context) > max_length:
+            parts = [context[i : i + max_length] for i in range(0, len(context), max_length)]
+
+            for i, part in enumerate(parts, 1):
+                header = f"🎯 <b>Контекст миграции (часть {i}/{len(parts)})</b>\n\n"
+                await message.answer(f"{header}<pre>{part}</pre>", parse_mode="HTML")
+        else:
+            await message.answer(
+                f"🎯 <b>Контекст миграции</b>\n\n<pre>{context}</pre>", parse_mode="HTML"
+            )
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} requested migration context")
+
+    except Exception as e:
+        logger.error(f"Error in migration_context_handler: {e}")
+        await message.answer(
+            f"❌ <b>Ошибка получения контекста</b>\n\n<code>{str(e)}</code>", parse_mode="HTML"
+        )
+
+
+@router.message(F.text.regexp(r"^/migration_task\s+\w+\s+\w+"))
+async def migration_task_handler(message: Message) -> None:
+    """Обновляет статус задачи миграции."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        # Парсим аргументы
+        text = message.text or ""
+        parts = text.split()
+
+        if len(parts) < 3:
+            await message.answer(
+                "❌ Неверный синтаксис\n"
+                "Используйте: <code>/migration_task &lt;task_id&gt; &lt;status&gt;</code>\n"
+                "Статусы: todo, in_progress, done, blocked",
+                parse_mode="HTML",
+            )
+            return
+
+        task_id = parts[1]
+        new_status = parts[2]
+
+        # Валидируем статус
+        valid_statuses = {"todo", "in_progress", "done", "blocked"}
+        if new_status not in valid_statuses:
+            await message.answer(
+                f"❌ Неверный статус: {new_status}\n" f"Доступные: {', '.join(valid_statuses)}"
+            )
+            return
+
+        # Обновляем статус
+        from app.core.migration_tracker import read_migration_status, update_task_status
+
+        success = update_task_status(task_id, new_status)
+
+        if success:
+            # Получаем обновленную информацию
+            status = read_migration_status()
+            task_info = status.tasks.get(task_id, {})
+
+            status_emoji = {"todo": "🟦", "in_progress": "🟨", "done": "🟩", "blocked": "🟥"}
+
+            await message.answer(
+                f"✅ <b>Задача обновлена</b>\n\n"
+                f"📋 <b>Задача:</b> {task_id}\n"
+                f"📊 <b>Статус:</b> {status_emoji.get(new_status, '📄')} {new_status}\n"
+                f"⏱️ <b>Длительность:</b> {task_info.get('duration', 'Не указана')}\n"
+                f"🎯 <b>Приоритет:</b> {task_info.get('priority', 'MEDIUM')}\n"
+                f"🔢 <b>Фаза:</b> {task_info.get('phase', 1)}",
+                parse_mode="HTML",
+            )
+        else:
+            await message.answer(f"❌ Не удалось обновить задачу: {task_id}")
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} updated migration task: {task_id} -> {new_status}")
+
+    except Exception as e:
+        logger.error(f"Error in migration_task_handler: {e}")
+        await message.answer(
+            f"❌ <b>Ошибка обновления задачи</b>\n\n<code>{str(e)}</code>", parse_mode="HTML"
+        )
+
+
+@router.message(F.text == "/migration_next")
+async def migration_next_handler(message: Message) -> None:
+    """Показывает следующие действия для миграции."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        from app.core.migration_tracker import get_next_actions, read_migration_status
+
+        next_actions = get_next_actions()
+        status = read_migration_status()
+
+        if not next_actions:
+            await message.answer(
+                "🎉 <b>Все задачи выполнены или заблокированы!</b>\n\n"
+                "Проверьте заблокированные задачи через <code>/migration_status</code>",
+                parse_mode="HTML",
+            )
+            return
+
+        response = "⏭️ <b>Следующие действия миграции</b>\n\n"
+        response += f"🎯 <b>Текущая фаза:</b> {status.current_phase}\n"
+        response += f"📈 <b>Прогресс:</b> {status.completion}%\n\n"
+        response += f"📋 <b>Готовые к выполнению ({len(next_actions)}):</b>\n\n"
+
+        for i, action in enumerate(next_actions[:5], 1):  # Показываем топ-5
+            priority_emoji = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
+
+            response += (
+                f"{i}. <b>{action['task_id']}</b>\n"
+                f"   ⏱️ {action['duration']} | "
+                f"{priority_emoji.get(action['priority'], '📄')} {action['priority']} | "
+                f"🔢 Фаза {action['phase']}\n\n"
+            )
+
+        if len(next_actions) > 5:
+            response += f"... и еще {len(next_actions) - 5} задач\n\n"
+
+        response += (
+            "💡 <b>Для обновления статуса:</b>\n"
+            "<code>/migration_task task_id in_progress</code>\n"
+            "<code>/migration_task task_id done</code>"
+        )
+
+        await message.answer(response, parse_mode="HTML")
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} requested next migration actions")
+
+    except Exception as e:
+        logger.error(f"Error in migration_next_handler: {e}")
+        await message.answer(
+            f"❌ <b>Ошибка получения следующих действий</b>\n\n<code>{str(e)}</code>",
+            parse_mode="HTML",
         )
 
 

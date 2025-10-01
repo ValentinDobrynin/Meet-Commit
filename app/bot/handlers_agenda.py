@@ -152,7 +152,7 @@ def _build_agenda_keyboard(bundle: agenda_builder.AgendaBundle) -> InlineKeyboar
             [
                 InlineKeyboardButton(
                     text="📤 Сохранить в Notion",
-                    callback_data=f"agenda:save:{bundle.context_type}:{bundle.raw_hash[:8]}",
+                    callback_data=f"agenda:save:{bundle.context_type}:{bundle.context_key}",
                 ),
             ],
             [
@@ -473,22 +473,98 @@ async def callback_save_agenda(callback: CallbackQuery) -> None:
     try:
         # Извлекаем данные из callback_data
         callback_data = callback.data or ""
-        parts = callback_data.split(":")
-        _context_type = parts[2]  # Пока не используется
-        _hash_short = parts[3]  # Пока не используется
+        parts = callback_data.split(":", 3)  # Ограничиваем разбиение для context_key с ":"
 
-        # Здесь нужно восстановить bundle из кэша или пересоздать
-        # Пока что показываем заглушку
+        if len(parts) < 4:
+            await callback.answer("❌ Ошибка в данных callback", show_alert=True)
+            return
+
+        context_type = parts[2]
+        context_key = parts[3]
+
         await callback.answer("💾 Сохранение в Notion...")
 
-        await callback.message.answer(  # type: ignore[union-attr]
-            "✅ Повестка сохранена в Notion!\n\n"
-            "🔗 Ссылка будет добавлена после реализации сохранения"
+        # Восстанавливаем bundle по context_type и context_key
+        from app.core import agenda_builder
+
+        if context_type == "Meeting":
+            bundle = agenda_builder.build_for_meeting(context_key)
+        elif context_type == "Person":
+            # Извлекаем имя из People/Name
+            person_name = (
+                context_key.replace("People/", "")
+                if context_key.startswith("People/")
+                else context_key
+            )
+            bundle = agenda_builder.build_for_person(person_name)
+        elif context_type == "Tag":
+            bundle = agenda_builder.build_for_tag(context_key)
+        else:
+            await callback.answer("❌ Неизвестный тип контекста", show_alert=True)
+            return
+
+        # Сохраняем в Notion через gateway
+        from datetime import datetime
+
+        from app.gateways.notion_agendas import create_agenda
+
+        # Формируем название повестки
+        if context_type == "Meeting":
+            agenda_name = f"Agenda — Meeting {context_key[:8]}"
+        elif context_type == "Person":
+            person_name = context_key.replace("People/", "")
+            agenda_name = f"Agenda — {person_name}"
+        else:  # Tag
+            agenda_name = f"Agenda — {context_key}"
+
+        # Используем текущую дату
+        current_date = datetime.now().date().isoformat()
+
+        # Сохраняем повестку
+        page_id = create_agenda(
+            name=agenda_name,
+            date_iso=current_date,
+            context_type=context_type,
+            context_key=context_key,
+            summary_md=bundle.summary_md,
+            tags=bundle.tags,
+            people=bundle.people,
+            raw_hash=bundle.raw_hash,
+            commit_ids=bundle.commits_linked,
+        )
+
+        # Формируем ссылку на созданную страницу
+        notion_url = f"https://www.notion.so/{page_id.replace('-', '')}"
+
+        await callback.message.edit_text(  # type: ignore[union-attr]
+            f"✅ <b>Повестка сохранена в Notion!</b>\n\n"
+            f"📋 <b>Название:</b> {agenda_name}\n"
+            f"📅 <b>Дата:</b> {current_date}\n"
+            f"🏷️ <b>Теги:</b> {len(bundle.tags)}\n"
+            f"👥 <b>Участники:</b> {len(bundle.people)}\n"
+            f"📝 <b>Коммитов связано:</b> {len(bundle.commits_linked)}\n\n"
+            f"🔗 <a href='{notion_url}'>Открыть в Notion</a>",
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+
+        logger.info(
+            f"Agenda saved to Notion: {agenda_name} ({context_type}) "
+            f"with {len(bundle.tags)} tags, {len(bundle.people)} people, "
+            f"{len(bundle.commits_linked)} commits"
         )
 
     except Exception as e:
         logger.error(f"Error saving agenda: {e}")
         await callback.answer("❌ Ошибка при сохранении", show_alert=True)
+
+        # Показываем детальную ошибку пользователю
+        await callback.message.answer(  # type: ignore[union-attr]
+            f"❌ <b>Ошибка сохранения повестки</b>\n\n"
+            f"<code>{str(e)}</code>\n\n"
+            f"💡 Попробуйте позже или обратитесь к администратору",
+            parse_mode="HTML",
+        )
 
 
 @router.callback_query(F.data.startswith("agenda:refresh:"))

@@ -6,7 +6,7 @@ import pytest
 from aiogram.types import Message
 
 from app.bot.handlers import (
-    cmd_assign,
+    cmd_assign_manual,
     cmd_confirm,
     cmd_delete,
     cmd_flip,
@@ -178,7 +178,7 @@ class TestReviewCommands:
         mock_normalize_assignees.return_value = ["Valentin"]
         mock_update_fields.return_value = True
 
-        await cmd_assign(mock_message)
+        await cmd_assign_manual(mock_message)
 
         mock_get_by_short_id.assert_called_once_with("789012")
         mock_normalize_assignees.assert_called_once_with(["Valentin"], attendees_en=[])
@@ -198,7 +198,7 @@ class TestReviewCommands:
         mock_get_by_short_id.return_value = sample_review_item
         mock_normalize_assignees.return_value = []
 
-        await cmd_assign(mock_message)
+        await cmd_assign_manual(mock_message)
 
         mock_message.answer.assert_called_once_with(
             "❌ Не удалось распознать исполнителя(ей): UnknownPerson"

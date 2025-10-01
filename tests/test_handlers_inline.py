@@ -198,11 +198,12 @@ class TestReviewItemCallbacks:
 
         mock_get_by_short_id.assert_called_once_with("abc123")
         mock_callback.answer.assert_called_once()
-        mock_callback.message.answer.assert_called_once()
+        # Теперь используется edit_text для интерактивных кнопок
+        mock_callback.message.edit_text.assert_called_once()
 
-        # Проверяем что сообщение содержит инструкции
-        call_args = mock_callback.message.answer.call_args[0][0]
-        assert "/assign abc123" in call_args
+        # Проверяем что сообщение содержит интерактивный интерфейс
+        call_args = mock_callback.message.edit_text.call_args[0][0]
+        assert "Назначение исполнителя" in call_args
 
     @patch("app.bot.handlers_inline.get_by_short_id")
     @patch("app.bot.handlers_inline.upsert_commits")

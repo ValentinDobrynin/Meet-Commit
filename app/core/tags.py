@@ -229,13 +229,20 @@ def _validate_kind(kind: str) -> str:
 
 
 @lru_cache(maxsize=256)
-def _tag_cached(mode: str, kind: str, text_hash: str, text: str) -> list[str]:
+def _tag_cached(
+    mode: str, kind: str, text_hash: str, text: str, meta_json: str = "{}"
+) -> list[str]:
     """Кэшированная функция тегирования."""
     if not text or not text.strip():
         return []
 
-    # Подготавливаем метаданные в зависимости от типа
-    meta: dict[str, Any] = {"title": "", "attendees": []}
+    # Восстанавливаем метаданные из JSON
+    import json
+
+    try:
+        meta: dict[str, Any] = json.loads(meta_json)
+    except (json.JSONDecodeError, TypeError):
+        meta = {"title": "", "attendees": []}
 
     try:
         if mode == "v0":
@@ -304,12 +311,18 @@ def tag_text(
         _stats["calls_by_kind"][kind] += 1
         _stats["total_calls"] += 1
 
-        # Создаем хеш для кэширования
-        text_hash = str(hash((mode, kind, text)))
+        # Подготавливаем meta для кэширования
+        import json
+
+        meta_to_use = meta or {"title": "", "attendees": []}
+        meta_json = json.dumps(meta_to_use, sort_keys=True, ensure_ascii=False)
+
+        # Создаем хеш для кэширования (включая meta)
+        text_hash = str(hash((mode, kind, text, meta_json)))
 
         # Проверяем кэш
         try:
-            result = _tag_cached(mode, kind, text_hash, text)
+            result = _tag_cached(mode, kind, text_hash, text, meta_json)
             _stats["cache_hits"] += 1
 
             # Обновляем статистику топ тегов

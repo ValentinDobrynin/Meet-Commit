@@ -232,6 +232,50 @@ def get_fallback_top_people() -> list[str]:
     return ["Nodari Kezua", "Sergey Lompa", "Vlad Sklyanov", "Sasha Katanov", "Daniil"]
 
 
+def get_all_people_from_dictionary(exclude_top: list[str] | None = None) -> list[str]:
+    """
+    Получает всех людей из people.json (кроме топа и владельца).
+
+    Args:
+        exclude_top: Список людей для исключения (уже показанные в топе)
+
+    Returns:
+        Алфавитно отсортированный список всех людей из словаря
+    """
+    try:
+        from app.core.people_store import load_people
+
+        people_data = load_people()
+        exclude_set = set(exclude_top or [])
+        excluded_owner_names = {
+            "Valya Dobrynin",
+            "Valentin Dobrynin",
+            "Valentin",
+            "Валентин",
+            "Валя",
+            "Val",
+        }
+
+        all_people = []
+        for person_entry in people_data:
+            name_en = person_entry.get("name_en", "")
+            if name_en and name_en not in exclude_set and name_en not in excluded_owner_names:
+                all_people.append(name_en)
+
+        # Алфавитная сортировка
+        all_people.sort()
+
+        logger.info(
+            f"All people from dictionary: {len(all_people)} (excluding {len(exclude_set)} top people)"
+        )
+        return all_people
+
+    except Exception as e:
+        logger.error(f"Error getting all people from dictionary: {e}")
+        # Fallback к людям с активностью
+        return get_other_people(exclude_top or [])
+
+
 def get_person_activity_summary(person: str) -> dict[str, Any]:
     """
     Получает детальную сводку активности человека.

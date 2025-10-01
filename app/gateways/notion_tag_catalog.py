@@ -207,3 +207,135 @@ def get_tag_catalog_info() -> dict[str, Any]:
     finally:
         if "client" in locals():
             client.close()
+
+
+@notion_update("create_tag_rule")
+def create_tag_rule(rule: dict[str, Any]) -> str:
+    """
+    Создает новое правило в Notion Tag Catalog.
+
+    Args:
+        rule: Правило в формате YAML (name, patterns, exclude, weight, kind)
+
+    Returns:
+        ID созданной страницы
+
+    Raises:
+        RuntimeError: При ошибках создания
+    """
+    if not settings.notion_sync_enabled:
+        raise RuntimeError("Notion sync is disabled in settings")
+
+    client = get_notion_http_client()
+
+    try:
+        # Подготавливаем данные для создания страницы
+        properties = {
+            "Name": {"title": [{"text": {"content": rule["name"]}}]},
+            "Kind": {"select": {"name": rule.get("kind", "Topic")}},
+            "Weight": {"number": rule.get("weight", 1.0)},
+            "Active": {"checkbox": True},
+        }
+
+        # Добавляем patterns как multi_select или rich_text
+        patterns = rule.get("patterns", [])
+        if patterns:
+            # Используем rich_text для хранения patterns (как массив)
+            patterns_text = "\n".join(patterns)
+            properties["Pattern(s)"] = {"rich_text": [{"text": {"content": patterns_text}}]}
+
+        # Добавляем exclude как rich_text
+        exclude = rule.get("exclude", [])
+        if exclude:
+            exclude_text = "\n".join(exclude)
+            properties["Exclude"] = {"rich_text": [{"text": {"content": exclude_text}}]}
+
+        # Добавляем описание если есть
+        description = rule.get("description", "")
+        if description:
+            properties["Description"] = {"rich_text": [{"text": {"content": description}}]}
+
+        # Создаем страницу
+        payload = {
+            "parent": {"database_id": settings.notion_db_tag_catalog_id},
+            "properties": properties,
+        }
+
+        response = client.post(f"{NOTION_API}/pages", json=payload)
+        response.raise_for_status()
+
+        page_data = response.json()
+        page_id = page_data["id"]
+
+        logger.info(f"Created tag rule in Notion: {rule['name']} (ID: {page_id})")
+        return page_id
+
+    except Exception as e:
+        logger.error(f"Error creating tag rule {rule.get('name', 'unknown')}: {e}")
+        raise RuntimeError(f"Failed to create tag rule: {e}") from e
+    finally:
+        client.close()
+
+
+@notion_update("update_tag_rule")
+def update_tag_rule(page_id: str, rule: dict[str, Any]) -> bool:
+    """
+    Обновляет существующее правило в Notion Tag Catalog.
+
+    Args:
+        page_id: ID страницы в Notion
+        rule: Обновленное правило в формате YAML
+
+    Returns:
+        True если обновление успешно
+
+    Raises:
+        RuntimeError: При ошибках обновления
+    """
+    if not settings.notion_sync_enabled:
+        raise RuntimeError("Notion sync is disabled in settings")
+
+    client = get_notion_http_client()
+
+    try:
+        # Подготавливаем данные для обновления
+        properties = {
+            "Kind": {"select": {"name": rule.get("kind", "Topic")}},
+            "Weight": {"number": rule.get("weight", 1.0)},
+            "Active": {"checkbox": True},
+        }
+
+        # Обновляем patterns
+        patterns = rule.get("patterns", [])
+        if patterns:
+            patterns_text = "\n".join(patterns)
+            properties["Pattern(s)"] = {"rich_text": [{"text": {"content": patterns_text}}]}
+
+        # Обновляем exclude
+        exclude = rule.get("exclude", [])
+        if exclude:
+            exclude_text = "\n".join(exclude)
+            properties["Exclude"] = {"rich_text": [{"text": {"content": exclude_text}}]}
+        else:
+            # Очищаем поле если exclude пустой
+            properties["Exclude"] = {"rich_text": []}
+
+        # Обновляем описание
+        description = rule.get("description", "")
+        if description:
+            properties["Description"] = {"rich_text": [{"text": {"content": description}}]}
+
+        # Обновляем страницу
+        payload = {"properties": properties}
+
+        response = client.patch(f"{NOTION_API}/pages/{page_id}", json=payload)
+        response.raise_for_status()
+
+        logger.info(f"Updated tag rule in Notion: {rule['name']} (ID: {page_id})")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error updating tag rule {rule.get('name', 'unknown')}: {e}")
+        raise RuntimeError(f"Failed to update tag rule: {e}") from e
+    finally:
+        client.close()
