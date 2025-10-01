@@ -480,3 +480,180 @@ def update_fields(
         response = client.patch(f"{NOTION_API}/pages/{page_id}", json={"properties": props})
         response.raise_for_status()
         return True
+
+
+# ====== FUNCTIONS FOR REVIEW CLEANUP ======
+
+
+@notion_query("fetch_all_reviews", fallback=[])  # Graceful fallback для стабильности
+def fetch_all_reviews(status_filter: list[str] | None = None) -> list[dict[str, Any]]:
+    """
+    Получает все записи Review Queue с опциональным фильтром по статусу.
+
+    Args:
+        status_filter: Список статусов для фильтрации, если None - все записи
+
+    Returns:
+        Список всех записей Review Queue
+    """
+    if not settings.review_db_id:
+        logger.warning("REVIEW_DB_ID не настроен, возвращаем пустой список")
+        return []
+
+    try:
+        with get_notion_http_client() as client:
+            all_results = []
+            has_more = True
+            next_cursor = None
+
+            while has_more:
+                # Подготавливаем payload
+                payload: dict[str, Any] = {"page_size": 100}
+
+                if next_cursor:
+                    payload["start_cursor"] = next_cursor  # type: ignore[unreachable]
+
+                # Добавляем фильтр по статусу если указан
+                if status_filter:
+                    if len(status_filter) == 1:
+                        payload["filter"] = {
+                            "property": "Status",
+                            "select": {"equals": status_filter[0]},
+                        }
+                    else:
+                        payload["filter"] = {
+                            "or": [
+                                {"property": "Status", "select": {"equals": status}}
+                                for status in status_filter
+                            ]
+                        }
+
+                # Сортировка по дате последнего редактирования
+                payload["sorts"] = [{"timestamp": "last_edited_time", "direction": "descending"}]
+
+                # Выполняем запрос
+                response = client.post(
+                    f"{NOTION_API}/databases/{settings.review_db_id}/query", json=payload
+                )
+                response.raise_for_status()
+
+                data = response.json()
+                results = data.get("results", [])
+
+                # Преобразуем в стандартный формат
+                for item in results:
+                    page_id = item["id"]
+                    props = item["properties"]
+
+                    review_item = {
+                        "id": page_id,
+                        "text": parse_rich_text(props.get("Commit text")),
+                        "status": parse_select(props.get("Status")),
+                        "direction": parse_select(props.get("Direction")),
+                        "assignees": parse_multi_select(props.get("Assignee")),
+                        "confidence": parse_number(props.get("Confidence")),
+                        "due_iso": parse_date(props.get("Due")),
+                        "context": parse_rich_text(props.get("Context")),
+                        "key": parse_rich_text(props.get("Key")),
+                        "meeting_page_id": parse_relation_single(props.get("Meeting")),
+                        "last_edited_time": item.get("last_edited_time"),
+                        "created_time": item.get("created_time"),
+                    }
+
+                    all_results.append(review_item)
+
+                # Проверяем есть ли еще страницы
+                has_more = data.get("has_more", False)
+                next_cursor = data.get("next_cursor")
+
+            logger.debug(f"Fetched {len(all_results)} reviews from Notion")
+            return all_results
+
+    except Exception as e:
+        logger.error(f"Error fetching all reviews: {e}")
+        return []
+
+
+@notion_update("bulk_update_status")  # Strict handling для целостности данных
+def bulk_update_status(page_ids: list[str], new_status: str) -> dict[str, int]:
+    """
+    Массово обновляет статус записей Review Queue.
+
+    Args:
+        page_ids: Список ID страниц для обновления
+        new_status: Новый статус для установки
+
+    Returns:
+        Словарь со статистикой: {"updated": int, "errors": int}
+
+    Raises:
+        RuntimeError: При критических ошибках API
+    """
+    if not page_ids:
+        return {"updated": 0, "errors": 0}
+
+    if not settings.review_db_id:
+        raise RuntimeError("REVIEW_DB_ID не настроен")
+
+    updated_count = 0
+    error_count = 0
+
+    try:
+        with get_notion_http_client() as client:
+            # Обновляем каждую страницу отдельно для надежности
+            for page_id in page_ids:
+                try:
+                    # Подготавливаем properties для обновления
+                    properties = {"Status": {"select": {"name": new_status}}}
+
+                    # Обновляем страницу
+                    response = client.patch(
+                        f"{NOTION_API}/pages/{page_id}", json={"properties": properties}
+                    )
+
+                    if response.status_code == 200:
+                        updated_count += 1
+                        logger.debug(f"Updated review {page_id} to status '{new_status}'")
+                    else:
+                        error_count += 1
+                        logger.error(
+                            f"Failed to update review {page_id}: "
+                            f"HTTP {response.status_code} - {response.text}"
+                        )
+
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Error updating review {page_id}: {e}")
+
+            logger.info(
+                f"Bulk status update completed: {updated_count} updated, {error_count} errors"
+            )
+
+            return {"updated": updated_count, "errors": error_count}
+
+    except Exception as e:
+        logger.error(f"Critical error in bulk_update_status: {e}")
+        raise RuntimeError(f"Failed to bulk update status: {e}") from e
+
+
+@notion_update("archive_review")  # Strict handling для целостности данных
+def archive_review(page_id: str) -> bool:
+    """
+    Архивирует одну запись Review Queue.
+
+    Args:
+        page_id: ID страницы для архивирования
+
+    Returns:
+        True если успешно архивировано
+
+    Raises:
+        RuntimeError: При ошибках API
+    """
+    try:
+        result = bulk_update_status([page_id], "archived")
+        return bool(result["updated"] > 0)
+
+    except Exception as e:
+        logger.error(f"Error archiving review {page_id}: {e}")
+        raise RuntimeError(f"Failed to archive review: {e}") from e

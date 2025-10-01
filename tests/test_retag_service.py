@@ -149,7 +149,9 @@ class TestParameterValidation:
             is_valid, error_msg = validate_retag_params("meetings", invalid_date, None, "both")
             assert not is_valid, f"Date should be invalid: {invalid_date}"
             # Проверяем что есть сообщение об ошибке даты (может быть разное)
-            assert any(keyword in error_msg for keyword in ["Неверный формат даты", "Невалидная дата"])
+            assert any(
+                keyword in error_msg for keyword in ["Неверный формат даты", "Невалидная дата"]
+            )
 
     def test_invalid_limit_parameter(self):
         """Тест невалидного параметра лимита."""

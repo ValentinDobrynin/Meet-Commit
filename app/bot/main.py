@@ -19,6 +19,7 @@ from .handlers_llm_commit import router as llm_commit_router
 from .handlers_people import router as people_router
 from .handlers_people_v2 import router as people_v2_router
 from .handlers_queries import router as queries_router
+from .handlers_review_cleanup import router as review_cleanup_router
 from .handlers_tags_review import router as tags_review_router
 from .init import build_bot
 
@@ -90,6 +91,7 @@ dp.include_router(people_v2_router)  # People Miner v2 с улучшенным U
 # Команды без FSM
 dp.include_router(llm_commit_router)  # LLM коммиты (без FSM)
 dp.include_router(queries_router)  # Команды запросов к коммитам
+dp.include_router(review_cleanup_router)  # Очистка Review Queue
 dp.include_router(inline_router)
 dp.include_router(admin_router)
 dp.include_router(admin_monitoring_router)  # Расширенные админские команды
