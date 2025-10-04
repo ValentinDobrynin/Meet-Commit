@@ -572,6 +572,8 @@ async def admin_help_handler(message: Message) -> None:
         "👥 <b>Управление людьми:</b>\n"
         "🧩 <code>/people_miner</code> - Интерактивная верификация кандидатов (v1)\n"
         "🆕 <code>/people_miner2 [freq|date]</code> - People Miner v2 с улучшенным UX\n"
+        "👤 <code>/people_admin</code> - Управление people.json через бота\n"
+        "❓ <code>/people_help</code> - Справка по управлению людьми\n"
         "📊 <code>/people_stats</code> - Статистика людей и кандидатов\n"
         "📈 <code>/people_stats_v2</code> - Подробная статистика People Miner v2\n"
         "📈 <code>/people_activity</code> - Рейтинг активности людей в коммитах\n"

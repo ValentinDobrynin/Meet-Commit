@@ -1,11 +1,15 @@
 [
   {
-    "name_en": "Daniil",
+    "name_en": "Daniil Shuleyko",
     "aliases": [
-      "Даня",
-      "Даниил",
-      "Danya",
+      "Daniil Shuleyko",
       "Daniil",
+      "Даниил Шулейко",
+      "Даниил",
+      "Даня",
+      "Danya",
+      "Shuleyko",
+      "Шулейко",
       "даней"
     ]
   },
@@ -132,5 +136,46 @@
       "created_at": "2025-09-29T19:40:23.695780",
       "source": "people_miner_v2"
     }
+  },
+  {
+    "name_en": "Dmitriy Dorokhin",
+    "aliases": [
+      "Dmitriy Dorokhin",
+      "Дмитрий Дорохин",
+      "Дима Дорохин",
+      "Dorokhin",
+      "Дорохин"
+    ],
+    "meta": {
+      "created_at": "2025-10-01T19:15:00.000000",
+      "source": "manual_addition"
+    }
+  },
+  {
+    "name_en": "Nikita Borisov",
+    "aliases": [
+      "Nikita Borisov",
+      "Borisov",
+      "Борисов",
+      "Никита Борисов"
+    ]
+  },
+  {
+    "name_en": "Roman Morozov",
+    "aliases": [
+      "Roman Morozov",
+      "Морозов"
+    ]
+  },
+  {
+    "name_en": "Roman Maresov",
+    "aliases": [
+      "Roman Maresov",
+      "Maresov",
+      "Роман Маресов",
+      "R.Maresov"
+    ],
+    "role": "CEO",
+    "company": "Market"
   }
 ]
