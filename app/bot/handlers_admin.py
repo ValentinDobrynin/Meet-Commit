@@ -16,6 +16,7 @@ from app.core.clients import clear_clients_cache, get_clients_info
 from app.core.metrics import snapshot as get_metrics_snapshot
 from app.core.tagger_v1_scored import validate_rules
 from app.core.tags import clear_cache, get_tagging_stats, reload_tags_rules, tag_text_scored
+from app.core.webhook_monitor import check_webhook_status, ensure_webhook_configured, get_webhook_health_report
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -564,7 +565,10 @@ async def admin_help_handler(message: Message) -> None:
         "📊 <code>/clients_stats</code> - Статистика клиентов и connection pooling\n"
         "🧹 <code>/clients_cleanup</code> - Очистка кэша Notion SDK клиентов\n\n"
         "🔄 <b>Notion синхронизация:</b>\n"
-        "📥 <code>/sync_tags</code> - Синхронизация Notion → YAML (по умолчанию)\n"
+        "📥 <code>/sync_tags</code> - Синхронизация Notion → YAML (по умолчанию)\n\n"
+        "🌐 <b>Webhook мониторинг (облако):</b>\n"
+        "🔍 <code>/webhook_status</code> - Проверить статус webhook\n"
+        "🔄 <code>/webhook_reset</code> - Переустановить webhook при проблемах\n"
         "📥 <code>/sync_tags from-notion</code> - Синхронизация Notion → YAML\n"
         "📤 <code>/sync_tags to-notion</code> - Синхронизация YAML → Notion\n"
         "🔍 <code>/sync_tags to-notion dry-run</code> - Предварительный просмотр\n"
@@ -1541,3 +1545,59 @@ async def retag_help_handler(message: Message) -> None:
     )
 
     await message.answer(help_text, parse_mode="HTML")
+
+
+@router.message(F.text == "/webhook_status")
+async def webhook_status_handler(message: Message) -> None:
+    """Проверяет статус webhook и показывает детальную информацию."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        from app.bot.main import bot
+        
+        report = await get_webhook_health_report(bot)
+        await message.answer(report, parse_mode="HTML")
+        
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} checked webhook status")
+
+    except Exception as e:
+        logger.error(f"Error in webhook_status_handler: {e}")
+        await message.answer(f"❌ <b>Ошибка проверки webhook:</b>\n<code>{e}</code>", parse_mode="HTML")
+
+
+@router.message(F.text == "/webhook_reset")
+async def webhook_reset_handler(message: Message) -> None:
+    """Переустанавливает webhook (полезно при проблемах)."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        from app.bot.main import bot
+        
+        await message.answer("🔄 <b>Переустанавливаю webhook...</b>", parse_mode="HTML")
+        
+        success = await ensure_webhook_configured(bot)
+        
+        if success:
+            await message.answer(
+                "✅ <b>Webhook успешно переустановлен</b>\n\n"
+                "Используйте /webhook_status для проверки",
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer(
+                "❌ <b>Не удалось переустановить webhook</b>\n\n"
+                "Проверьте переменную WEBHOOK_URL",
+                parse_mode="HTML"
+            )
+        
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} reset webhook: success={success}")
+
+    except Exception as e:
+        logger.error(f"Error in webhook_reset_handler: {e}")
+        await message.answer(f"❌ <b>Ошибка сброса webhook:</b>\n<code>{e}</code>", parse_mode="HTML")

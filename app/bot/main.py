@@ -216,23 +216,23 @@ async def run() -> None:
 async def run_cloud_mode():
     """Запуск в облачном режиме с webhook."""
     
-    # 1. Настраиваем webhook
+    # 1. Настраиваем webhook с проверкой
     webhook_url = os.getenv("WEBHOOK_URL")
     if webhook_url:
         try:
-            # Удаляем старый webhook если есть
-            await bot.delete_webhook(drop_pending_updates=True)
+            # Используем модуль мониторинга для надежной настройки
+            from app.core.webhook_monitor import ensure_webhook_configured
             
-            # Устанавливаем новый webhook
-            await bot.set_webhook(
-                url=webhook_url,
-                allowed_updates=["message", "callback_query"],
-                drop_pending_updates=True
-            )
-            logger.info(f"✅ Webhook configured: {webhook_url}")
+            success = await ensure_webhook_configured(bot)
+            
+            if success:
+                logger.info(f"✅ Webhook configured and verified: {webhook_url}")
+            else:
+                logger.warning(f"⚠️ Webhook configuration had issues, but continuing...")
+                
         except Exception as e:
-            logger.error(f"❌ Failed to set webhook: {e}")
-            raise
+            logger.error(f"❌ Failed to configure webhook: {e}")
+            # Не поднимаем исключение - пытаемся продолжить работу
     else:
         logger.warning("⚠️ WEBHOOK_URL не настроен, webhook не установлен")
     
