@@ -117,41 +117,46 @@ def create_storage():
         return MemoryStorage()
 
 
-bot, dp = build_bot(TELEGRAM_TOKEN, create_storage())
-
-# Флаг для предотвращения повторной регистрации роутеров
+# Глобальные переменные для singleton pattern
+_bot = None
+_dp = None
 _routers_registered = False
 
 
-def register_routers():
-    """Регистрирует роутеры только один раз."""
-    global _routers_registered
-    if _routers_registered:
-        return
+def get_bot_and_dp():
+    """Возвращает singleton экземпляры bot и dp."""
+    global _bot, _dp, _routers_registered
     
-    # FSM роутеры должны быть зарегистрированы ПЕРВЫМИ для перехвата состояний
-    dp.include_router(agenda_router)  # ПЕРВЫЙ: Система повесток с FSM состояниями
-    dp.include_router(tags_review_router)  # FSM состояния для тегирования
-    dp.include_router(assign_router)  # Интерактивное назначение исполнителей с FSM
-    dp.include_router(direct_commit_router)  # Прямые коммиты с FSM
-    dp.include_router(people_router)  # People Miner v1 с FSM
-    dp.include_router(people_admin_router)  # Админ управление people.json с FSM
-    dp.include_router(people_v2_router)  # People Miner v2 с улучшенным UX
-    # Команды без FSM
-    dp.include_router(llm_commit_router)  # LLM коммиты (без FSM)
-    dp.include_router(queries_router)  # Команды запросов к коммитам
-    dp.include_router(review_cleanup_router)  # Очистка Review Queue
-    dp.include_router(inline_router)
-    dp.include_router(admin_router)
-    dp.include_router(admin_monitoring_router)  # Расширенные админские команды
-    dp.include_router(router)  # Основной роутер ПОСЛЕДНИМ
+    if _bot is None or _dp is None:
+        _bot, _dp = build_bot(TELEGRAM_TOKEN, create_storage())
+        
+        # Регистрируем роутеры только один раз
+        if not _routers_registered:
+            # FSM роутеры должны быть зарегистрированы ПЕРВЫМИ для перехвата состояний
+            _dp.include_router(agenda_router)  # ПЕРВЫЙ: Система повесток с FSM состояниями
+            _dp.include_router(tags_review_router)  # FSM состояния для тегирования
+            _dp.include_router(assign_router)  # Интерактивное назначение исполнителей с FSM
+            _dp.include_router(direct_commit_router)  # Прямые коммиты с FSM
+            _dp.include_router(people_router)  # People Miner v1 с FSM
+            _dp.include_router(people_admin_router)  # Админ управление people.json с FSM
+            _dp.include_router(people_v2_router)  # People Miner v2 с улучшенным UX
+            # Команды без FSM
+            _dp.include_router(llm_commit_router)  # LLM коммиты (без FSM)
+            _dp.include_router(queries_router)  # Команды запросов к коммитам
+            _dp.include_router(review_cleanup_router)  # Очистка Review Queue
+            _dp.include_router(inline_router)
+            _dp.include_router(admin_router)
+            _dp.include_router(admin_monitoring_router)  # Расширенные админские команды
+            _dp.include_router(router)  # Основной роутер ПОСЛЕДНИМ
+            
+            _routers_registered = True
+            logger.debug("Routers registered successfully")
     
-    _routers_registered = True
-    logger.debug("Routers registered successfully")
+    return _bot, _dp
 
 
-# Регистрируем роутеры при импорте модуля
-register_routers()
+# Инициализируем при импорте модуля
+bot, dp = get_bot_and_dp()
 
 
 def acquire_lock():
