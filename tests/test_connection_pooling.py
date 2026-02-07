@@ -178,3 +178,5 @@ class TestClientManagerIntegration:
         # Проверяем что кэш работает
         cache_info = test_function.cache_info()
         assert cache_info["hits"] >= 1
+
+
