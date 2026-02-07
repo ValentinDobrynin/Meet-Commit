@@ -117,46 +117,34 @@ def create_storage():
         return MemoryStorage()
 
 
-# Глобальные переменные для singleton pattern
-_bot = None
-_dp = None
-_routers_registered = False
+# Создаем bot и dp на уровне модуля (как в FoodBot и Wedding-bot)
+# Роутеры будут зарегистрированы в lifespan context manager (app/server.py)
+bot, dp = build_bot(TELEGRAM_TOKEN, create_storage())
 
 
-def get_bot_and_dp():
-    """Возвращает singleton экземпляры bot и dp."""
-    global _bot, _dp, _routers_registered
+def register_all_routers():
+    """
+    Регистрирует все роутеры в dispatcher.
+    Вызывается ОДИН раз из lifespan context manager в app/server.py
+    """
+    # FSM роутеры должны быть зарегистрированы ПЕРВЫМИ для перехвата состояний
+    dp.include_router(agenda_router)  # ПЕРВЫЙ: Система повесток с FSM состояниями
+    dp.include_router(tags_review_router)  # FSM состояния для тегирования
+    dp.include_router(assign_router)  # Интерактивное назначение исполнителей с FSM
+    dp.include_router(direct_commit_router)  # Прямые коммиты с FSM
+    dp.include_router(people_router)  # People Miner v1 с FSM
+    dp.include_router(people_admin_router)  # Админ управление people.json с FSM
+    dp.include_router(people_v2_router)  # People Miner v2 с улучшенным UX
+    # Команды без FSM
+    dp.include_router(llm_commit_router)  # LLM коммиты (без FSM)
+    dp.include_router(queries_router)  # Команды запросов к коммитам
+    dp.include_router(review_cleanup_router)  # Очистка Review Queue
+    dp.include_router(inline_router)
+    dp.include_router(admin_router)
+    dp.include_router(admin_monitoring_router)  # Расширенные админские команды
+    dp.include_router(router)  # Основной роутер ПОСЛЕДНИМ
     
-    if _bot is None or _dp is None:
-        _bot, _dp = build_bot(TELEGRAM_TOKEN, create_storage())
-        
-        # Регистрируем роутеры только один раз
-        if not _routers_registered:
-            # FSM роутеры должны быть зарегистрированы ПЕРВЫМИ для перехвата состояний
-            _dp.include_router(agenda_router)  # ПЕРВЫЙ: Система повесток с FSM состояниями
-            _dp.include_router(tags_review_router)  # FSM состояния для тегирования
-            _dp.include_router(assign_router)  # Интерактивное назначение исполнителей с FSM
-            _dp.include_router(direct_commit_router)  # Прямые коммиты с FSM
-            _dp.include_router(people_router)  # People Miner v1 с FSM
-            _dp.include_router(people_admin_router)  # Админ управление people.json с FSM
-            _dp.include_router(people_v2_router)  # People Miner v2 с улучшенным UX
-            # Команды без FSM
-            _dp.include_router(llm_commit_router)  # LLM коммиты (без FSM)
-            _dp.include_router(queries_router)  # Команды запросов к коммитам
-            _dp.include_router(review_cleanup_router)  # Очистка Review Queue
-            _dp.include_router(inline_router)
-            _dp.include_router(admin_router)
-            _dp.include_router(admin_monitoring_router)  # Расширенные админские команды
-            _dp.include_router(router)  # Основной роутер ПОСЛЕДНИМ
-            
-            _routers_registered = True
-            logger.debug("Routers registered successfully")
-    
-    return _bot, _dp
-
-
-# Инициализируем при импорте модуля
-bot, dp = get_bot_and_dp()
+    logger.info("✅ All routers registered successfully")
 
 
 def acquire_lock():
@@ -214,52 +202,13 @@ async def run() -> None:
 
 
 async def run_cloud_mode():
-    """Запуск в облачном режиме с webhook."""
-    
-    # 1. Настраиваем webhook с проверкой
-    webhook_url = os.getenv("WEBHOOK_URL")
-    if webhook_url:
-        try:
-            # Используем модуль мониторинга для надежной настройки
-            from app.core.webhook_monitor import ensure_webhook_configured
-            
-            success = await ensure_webhook_configured(bot)
-            
-            if success:
-                logger.info(f"✅ Webhook configured and verified: {webhook_url}")
-            else:
-                logger.warning(f"⚠️ Webhook configuration had issues, but continuing...")
-                
-        except Exception as e:
-            logger.error(f"❌ Failed to configure webhook: {e}")
-            # Не поднимаем исключение - пытаемся продолжить работу
-    else:
-        logger.warning("⚠️ WEBHOOK_URL не настроен, webhook не установлен")
-    
-    # 2. Отправляем приветствия
-    from app.bot.startup_greeting import send_startup_greetings_safe
-    logger.info("Sending startup greetings to active users...")
-    await send_startup_greetings_safe(bot)
-    
-    # 3. Запускаем FastAPI сервер (без circular import)
-    logger.info("🚀 Bot ready to receive webhooks via FastAPI")
-    
-    import uvicorn
-    
-    port = int(os.getenv("PORT", 8000))
-    host = os.getenv("APP_HOST", "0.0.0.0")
-    
-    logger.info(f"🌐 Starting FastAPI server on {host}:{port}")
-    
-    # Используем строковый import чтобы избежать circular dependency
-    config = uvicorn.Config(
-        "app.server:app",
-        host=host,
-        port=port,
-        log_level="info"
-    )
-    server = uvicorn.Server(config)
-    await server.serve()
+    """
+    В облачном режиме uvicorn запускается через startCommand.
+    Эта функция больше не нужна - всё происходит в lifespan (app/server.py).
+    """
+    logger.info("🌐 Cloud mode detected")
+    logger.info("⚠️ In cloud mode, use: uvicorn app.server:app --host 0.0.0.0 --port $PORT")
+    logger.info("Exiting - FastAPI lifespan will handle initialization")
 
 
 async def run_local_mode():

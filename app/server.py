@@ -1,16 +1,70 @@
-from fastapi import FastAPI, Request
+import logging
+import os
+from contextlib import asynccontextmanager
+
+from aiogram.types import Update
+from fastapi import FastAPI, Request, Response
 
 from app.settings import Healthz, settings
 
-# из app/bot/__init__.py подтянется router с хэндлерами
+# Импортируем bot, dp и функцию регистрации роутеров
+# Импорт происходит ОДИН раз при загрузке модуля
+from app.bot.main import bot, dp, register_all_routers
 
-# Singleton импорт bot и dp - происходит ОДИН раз при загрузке модуля
-# Это безопасно т.к. get_bot_and_dp() использует глобальное кэширование
-from app.bot.main import bot, dp
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    FastAPI lifespan context manager.
+    Выполняется ОДИН раз при старте приложения.
+    """
+    # Startup
+    deployment_mode = os.getenv("DEPLOYMENT_MODE", "local")
+    logger.info(f"🌐 Starting Meet-Commit in {deployment_mode} mode...")
+    
+    # Регистрируем роутеры (выполняется ОДИН раз!)
+    register_all_routers()
+    
+    # В облачном режиме настраиваем webhook
+    if deployment_mode == "render":
+        webhook_url = os.getenv("WEBHOOK_URL")
+        if webhook_url:
+            try:
+                await bot.set_webhook(
+                    url=webhook_url,
+                    allowed_updates=["message", "callback_query"],
+                    drop_pending_updates=True
+                )
+                logger.info(f"✅ Webhook configured: {webhook_url}")
+            except Exception as e:
+                logger.error(f"❌ Failed to set webhook: {e}")
+    
+    # Отправляем startup greetings
+    try:
+        from app.bot.startup_greeting import send_startup_greetings_safe
+        await send_startup_greetings_safe(bot)
+        logger.info("✅ Startup greetings sent")
+    except Exception as e:
+        logger.warning(f"Failed to send startup greetings: {e}")
+    
+    logger.info("🚀 Meet-Commit started successfully!")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down Meet-Commit...")
+    # Не удаляем webhook чтобы избежать проблем при рестартах
+    logger.info("✅ Shutdown complete")
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="MeetingCommit", version="0.2.0")
+    app = FastAPI(
+        title="MeetingCommit", 
+        version="0.2.0",
+        lifespan=lifespan  # ← Добавляем lifespan!
+    )
 
     @app.get("/healthz", response_model=Healthz)
     def healthz():
@@ -35,24 +89,30 @@ def create_app() -> FastAPI:
             import traceback
             return {"status": "error", "error": str(e), "traceback": traceback.format_exc()}
 
-    # новый маршрут для Telegram webhook
+    # Telegram webhook endpoint (как в FoodBot и Wedding-bot)
     @app.post("/telegram/webhook")
     async def telegram_webhook(request: Request):
-        # bot и dp уже импортированы на уровне модуля (singleton)
+        """
+        Handle incoming Telegram updates.
+        bot и dp уже созданы на уровне модуля и роутеры зарегистрированы в lifespan.
+        """
         try:
-            data = await request.json()
-            await dp.feed_raw_update(bot, data)
-            return {"ok": True}
+            # Parse update data
+            update_data = await request.json()
+            
+            # Create Update object (как в Wedding-bot)
+            update = Update(**update_data)
+            
+            # Feed to dispatcher (используем feed_update, не feed_raw_update!)
+            await dp.feed_update(bot, update)
+            
+            return Response(status_code=200)
+            
         except Exception as e:
-            # Логируем ошибку для диагностики
-            import logging
-            import traceback
-            logger = logging.getLogger("webhook")
-            logger.error(f"Webhook error: {e}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            # Возвращаем ok=True чтобы Telegram не удалил webhook
+            logger.error(f"Error handling webhook: {e}", exc_info=True)
+            # Возвращаем 200 чтобы Telegram не удалил webhook
             # Ошибка залогирована для последующего исправления
-            return {"ok": True, "error": str(e)}
+            return Response(status_code=200)
 
     return app
 
