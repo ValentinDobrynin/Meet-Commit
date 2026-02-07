@@ -118,22 +118,40 @@ def create_storage():
 
 
 bot, dp = build_bot(TELEGRAM_TOKEN, create_storage())
-# FSM роутеры должны быть зарегистрированы ПЕРВЫМИ для перехвата состояний
-dp.include_router(agenda_router)  # ПЕРВЫЙ: Система повесток с FSM состояниями
-dp.include_router(tags_review_router)  # FSM состояния для тегирования
-dp.include_router(assign_router)  # Интерактивное назначение исполнителей с FSM
-dp.include_router(direct_commit_router)  # Прямые коммиты с FSM
-dp.include_router(people_router)  # People Miner v1 с FSM
-dp.include_router(people_admin_router)  # Админ управление people.json с FSM
-dp.include_router(people_v2_router)  # People Miner v2 с улучшенным UX
-# Команды без FSM
-dp.include_router(llm_commit_router)  # LLM коммиты (без FSM)
-dp.include_router(queries_router)  # Команды запросов к коммитам
-dp.include_router(review_cleanup_router)  # Очистка Review Queue
-dp.include_router(inline_router)
-dp.include_router(admin_router)
-dp.include_router(admin_monitoring_router)  # Расширенные админские команды
-dp.include_router(router)  # Основной роутер ПОСЛЕДНИМ
+
+# Флаг для предотвращения повторной регистрации роутеров
+_routers_registered = False
+
+
+def register_routers():
+    """Регистрирует роутеры только один раз."""
+    global _routers_registered
+    if _routers_registered:
+        return
+    
+    # FSM роутеры должны быть зарегистрированы ПЕРВЫМИ для перехвата состояний
+    dp.include_router(agenda_router)  # ПЕРВЫЙ: Система повесток с FSM состояниями
+    dp.include_router(tags_review_router)  # FSM состояния для тегирования
+    dp.include_router(assign_router)  # Интерактивное назначение исполнителей с FSM
+    dp.include_router(direct_commit_router)  # Прямые коммиты с FSM
+    dp.include_router(people_router)  # People Miner v1 с FSM
+    dp.include_router(people_admin_router)  # Админ управление people.json с FSM
+    dp.include_router(people_v2_router)  # People Miner v2 с улучшенным UX
+    # Команды без FSM
+    dp.include_router(llm_commit_router)  # LLM коммиты (без FSM)
+    dp.include_router(queries_router)  # Команды запросов к коммитам
+    dp.include_router(review_cleanup_router)  # Очистка Review Queue
+    dp.include_router(inline_router)
+    dp.include_router(admin_router)
+    dp.include_router(admin_monitoring_router)  # Расширенные админские команды
+    dp.include_router(router)  # Основной роутер ПОСЛЕДНИМ
+    
+    _routers_registered = True
+    logger.debug("Routers registered successfully")
+
+
+# Регистрируем роутеры при импорте модуля
+register_routers()
 
 
 def acquire_lock():
