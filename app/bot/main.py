@@ -184,31 +184,44 @@ def release_lock():
         logger.warning(f"Could not release lock: {e}")
 
 
-async def run() -> None:
+def run() -> None:
     """Запуск Telegram бота с поддержкой облачного режима."""
     try:
         deployment_mode = os.getenv("DEPLOYMENT_MODE", "local")
         
         if deployment_mode == "render":
             logger.info("🌐 Starting in Render cloud mode...")
-            await run_cloud_mode()
+            run_cloud_mode()  # Синхронная функция
         else:
             logger.info("💻 Starting in local polling mode...")
-            await run_local_mode()
+            asyncio.run(run_local_mode())
             
     except Exception as e:
         logger.error(f"Bot error: {e}", exc_info=True)
         raise
 
 
-async def run_cloud_mode():
+def run_cloud_mode():
     """
-    В облачном режиме uvicorn запускается через startCommand.
-    Эта функция больше не нужна - всё происходит в lifespan (app/server.py).
+    Запуск в облачном режиме через uvicorn.
+    Инициализация происходит в lifespan (app/server.py).
     """
-    logger.info("🌐 Cloud mode detected")
-    logger.info("⚠️ In cloud mode, use: uvicorn app.server:app --host 0.0.0.0 --port $PORT")
-    logger.info("Exiting - FastAPI lifespan will handle initialization")
+    import uvicorn
+    
+    port = int(os.getenv("PORT", 8000))
+    host = "0.0.0.0"
+    
+    logger.info(f"🌐 Starting FastAPI server on {host}:{port}")
+    logger.info("Initialization will happen in lifespan context manager")
+    
+    # Запускаем uvicorn с FastAPI app
+    # lifespan в app/server.py зарегистрирует роутеры и настроит webhook
+    uvicorn.run(
+        "app.server:app",
+        host=host,
+        port=port,
+        log_level="info"
+    )
 
 
 async def run_local_mode():
@@ -232,7 +245,7 @@ if __name__ == "__main__":
 
     try:
         logger.info("🚀 Meet-Commit Bot starting...")
-        asyncio.run(run())
+        run()  # Теперь синхронная
     except KeyboardInterrupt:
         logger.info("⏹️  Bot stopped by user")
     except Exception as e:
