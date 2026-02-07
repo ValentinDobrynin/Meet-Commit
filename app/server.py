@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Request
 
-from app.bot.main import bot, dp
 from app.settings import Healthz, settings
 
 # из app/bot/__init__.py подтянется router с хэндлерами
@@ -16,6 +15,9 @@ def create_app() -> FastAPI:
     # новый маршрут для Telegram webhook
     @app.post("/telegram/webhook")
     async def telegram_webhook(request: Request):
+        # Отложенный импорт чтобы избежать circular dependency
+        from app.bot.main import bot, dp
+        
         data = await request.json()
         await dp.feed_raw_update(bot, data)
         return {"ok": True}

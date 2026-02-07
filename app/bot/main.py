@@ -218,22 +218,19 @@ async def run_cloud_mode():
     logger.info("Sending startup greetings to active users...")
     await send_startup_greetings_safe(bot)
     
-    # 3. Запускаем FastAPI сервер
+    # 3. Запускаем FastAPI сервер (без circular import)
     logger.info("🚀 Bot ready to receive webhooks via FastAPI")
     
-    # В облачном режиме Render запустит FastAPI через startCommand
-    # Поэтому здесь мы просто импортируем и запускаем uvicorn
     import uvicorn
-    from app.server import app as fastapi_app
-    from app.settings import settings
     
-    port = int(os.getenv("PORT", settings.app_port))
+    port = int(os.getenv("PORT", 8000))
     host = os.getenv("APP_HOST", "0.0.0.0")
     
     logger.info(f"🌐 Starting FastAPI server on {host}:{port}")
     
+    # Используем строковый import чтобы избежать circular dependency
     config = uvicorn.Config(
-        fastapi_app,
+        "app.server:app",
         host=host,
         port=port,
         log_level="info"
