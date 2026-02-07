@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     app_port: int = 8000
     env: str = "local"
 
+    # Cloud deployment settings
+    deployment_mode: str = Field(default="local", description="Deployment mode: local or render")
+    webhook_url: str | None = Field(default=None, description="Telegram webhook URL for cloud mode")
+    redis_url: str | None = Field(default=None, description="Redis connection URL for FSM storage")
+
     # OpenAI settings
     openai_api_key: str | None = None
     summarize_model: str = "gpt-4o-mini"

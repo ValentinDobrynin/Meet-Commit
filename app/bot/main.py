@@ -83,7 +83,41 @@ try:
 except KeyError:
     raise ValueError("TELEGRAM_TOKEN not found in environment variables") from None
 
-bot, dp = build_bot(TELEGRAM_TOKEN, MemoryStorage())
+
+def create_storage():
+    """Создает storage в зависимости от режима развертывания."""
+    deployment_mode = os.getenv("DEPLOYMENT_MODE", "local")
+    
+    if deployment_mode == "render":
+        # Облачный режим - используем Redis
+        try:
+            from aiogram.fsm.storage.redis import RedisStorage
+            from redis.asyncio import Redis
+            
+            redis_url = os.getenv("REDIS_URL")
+            
+            if not redis_url:
+                logger.warning("REDIS_URL не настроен, используем MemoryStorage")
+                return MemoryStorage()
+            
+            logger.info(f"🔄 Using Redis storage for cloud mode")
+            # Создаем Redis connection
+            redis = Redis.from_url(redis_url, decode_responses=True)
+            return RedisStorage(redis=redis)
+            
+        except ImportError:
+            logger.warning("Redis не установлен, используем MemoryStorage")
+            return MemoryStorage()
+        except Exception as e:
+            logger.error(f"Ошибка подключения к Redis: {e}, используем MemoryStorage")
+            return MemoryStorage()
+    else:
+        # Локальный режим - используем память
+        logger.info("💾 Using Memory storage (local mode)")
+        return MemoryStorage()
+
+
+bot, dp = build_bot(TELEGRAM_TOKEN, create_storage())
 # FSM роутеры должны быть зарегистрированы ПЕРВЫМИ для перехвата состояний
 dp.include_router(agenda_router)  # ПЕРВЫЙ: Система повесток с FSM состояниями
 dp.include_router(tags_review_router)  # FSM состояния для тегирования
@@ -140,21 +174,86 @@ def release_lock():
 
 
 async def run() -> None:
-    """Запуск Telegram бота"""
+    """Запуск Telegram бота с поддержкой облачного режима."""
     try:
-        logger.info("🤖 Starting bot in polling mode...")
-
-        # Отправляем приветствия активным пользователям при запуске
-        from app.bot.startup_greeting import send_startup_greetings_safe
-
-        logger.info("Sending startup greetings to active users...")
-        await send_startup_greetings_safe(bot)
-
-        logger.info("Bot polling started. Waiting for messages...")
-        await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
+        deployment_mode = os.getenv("DEPLOYMENT_MODE", "local")
+        
+        if deployment_mode == "render":
+            logger.info("🌐 Starting in Render cloud mode...")
+            await run_cloud_mode()
+        else:
+            logger.info("💻 Starting in local polling mode...")
+            await run_local_mode()
+            
     except Exception as e:
         logger.error(f"Bot error: {e}", exc_info=True)
         raise
+
+
+async def run_cloud_mode():
+    """Запуск в облачном режиме с webhook."""
+    
+    # 1. Настраиваем webhook
+    webhook_url = os.getenv("WEBHOOK_URL")
+    if webhook_url:
+        try:
+            # Удаляем старый webhook если есть
+            await bot.delete_webhook(drop_pending_updates=True)
+            
+            # Устанавливаем новый webhook
+            await bot.set_webhook(
+                url=webhook_url,
+                allowed_updates=["message", "callback_query"],
+                drop_pending_updates=True
+            )
+            logger.info(f"✅ Webhook configured: {webhook_url}")
+        except Exception as e:
+            logger.error(f"❌ Failed to set webhook: {e}")
+            raise
+    else:
+        logger.warning("⚠️ WEBHOOK_URL не настроен, webhook не установлен")
+    
+    # 2. Отправляем приветствия
+    from app.bot.startup_greeting import send_startup_greetings_safe
+    logger.info("Sending startup greetings to active users...")
+    await send_startup_greetings_safe(bot)
+    
+    # 3. Запускаем FastAPI сервер
+    logger.info("🚀 Bot ready to receive webhooks via FastAPI")
+    
+    # В облачном режиме Render запустит FastAPI через startCommand
+    # Поэтому здесь мы просто импортируем и запускаем uvicorn
+    import uvicorn
+    from app.server import app as fastapi_app
+    from app.settings import settings
+    
+    port = int(os.getenv("PORT", settings.app_port))
+    host = os.getenv("APP_HOST", "0.0.0.0")
+    
+    logger.info(f"🌐 Starting FastAPI server on {host}:{port}")
+    
+    config = uvicorn.Config(
+        fastapi_app,
+        host=host,
+        port=port,
+        log_level="info"
+    )
+    server = uvicorn.Server(config)
+    await server.serve()
+
+
+async def run_local_mode():
+    """Запуск в локальном режиме с polling (существующая логика)."""
+    logger.info("🤖 Starting bot in polling mode...")
+
+    # Отправляем приветствия активным пользователям при запуске
+    from app.bot.startup_greeting import send_startup_greetings_safe
+
+    logger.info("Sending startup greetings to active users...")
+    await send_startup_greetings_safe(bot)
+
+    logger.info("Bot polling started. Waiting for messages...")
+    await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
 
 
 if __name__ == "__main__":
