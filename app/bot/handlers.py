@@ -264,7 +264,10 @@ async def handle_text_with_fsm_check(msg: Message, state: FSMContext):
 
 async def _process_ingest_input(msg: Message, state: FSMContext):
     """Обрабатывает ввод для суммаризации (документы и текст)."""
+    import base64
+    
     raw_bytes: bytes | None = None
+    raw_bytes_b64: str | None = None  # Для Redis storage
     text: str | None = None
     filename = "message.txt"
 
@@ -279,6 +282,8 @@ async def _process_ingest_input(msg: Message, state: FSMContext):
         bytes_io = await msg.bot.download_file(file.file_path)
         if bytes_io:
             raw_bytes = bytes_io.read()
+            # Конвертируем bytes в base64 для Redis storage
+            raw_bytes_b64 = base64.b64encode(raw_bytes).decode('utf-8')
         else:
             await msg.answer("Ошибка: не удалось загрузить файл")
             return
@@ -286,7 +291,8 @@ async def _process_ingest_input(msg: Message, state: FSMContext):
     else:
         text = msg.text or ""
 
-    await state.update_data(raw_bytes=raw_bytes, text=text, filename=filename)
+    # Сохраняем base64 строку вместо bytes для совместимости с Redis
+    await state.update_data(raw_bytes_b64=raw_bytes_b64, text=text, filename=filename)
     await state.set_state(IngestStates.waiting_prompt)
     await msg.answer("Выбери шаблон суммаризации:", reply_markup=_prompts_kb())
 
@@ -516,8 +522,16 @@ async def run_commits_pipeline(
 
 async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
     try:
+        import base64
+        
         data = await state.get_data()
-        raw_bytes = data.get("raw_bytes")
+        raw_bytes_b64 = data.get("raw_bytes_b64")
+        
+        # Конвертируем base64 обратно в bytes если есть
+        raw_bytes = None
+        if raw_bytes_b64:
+            raw_bytes = base64.b64decode(raw_bytes_b64)
+        
         text = data.get("text")
         filename = data.get("filename") or "meeting.txt"
         prompt_file = data.get("prompt_file")
