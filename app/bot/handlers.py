@@ -308,7 +308,8 @@ async def choose_prompt(cb: CallbackQuery, state: FSMContext):
     try:
         data = await state.get_data()
 
-        if not data.get("raw_bytes") and not data.get("text"):
+        # Проверяем наличие данных (поддерживаем оба формата для совместимости)
+        if not data.get("raw_bytes_b64") and not data.get("raw_bytes") and not data.get("text"):
             await cb.answer("Нет входных данных. Пришли файл или текст.", show_alert=True)
             return
 
