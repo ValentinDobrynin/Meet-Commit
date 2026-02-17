@@ -672,9 +672,12 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
         # Красивая карточка встречи
         meeting_card = format_meeting_card(meeting_data)
 
-        # Предварительный просмотр
+        # Предварительный просмотр (экранируем HTML для безопасности)
+        import html
         preview = "\n".join(summary_md.splitlines()[:MAX_PREVIEW_LINES])
-        preview_card = f"📋 <b>Предварительный просмотр:</b>\n\n" f"<pre>{preview}</pre>"
+        # Экранируем HTML entities чтобы избежать ошибок парсинга
+        preview_escaped = html.escape(preview)
+        preview_card = f"📋 <b>Предварительный просмотр:</b>\n\n" f"<pre>{preview_escaped}</pre>"
 
         chunks = [
             format_success_card("Встреча обработана успешно!"),
