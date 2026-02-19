@@ -183,8 +183,9 @@ def _format_tags_message(session: TagReviewSession) -> str:
         return header + "📋 <i>Тегов нет</i>\n\n💡 Используйте кнопку 'Добавить' для создания тегов"
 
     # Показываем первые 8 тегов
+    import html as _html
     visible_tags = session.working_tags[:8]
-    tags_text = "\n".join(f"{i+1}. <code>{tag}</code>" for i, tag in enumerate(visible_tags))
+    tags_text = "\n".join(f"{i+1}. <code>{_html.escape(str(tag))}</code>" for i, tag in enumerate(visible_tags))
 
     if len(session.working_tags) > 8:
         tags_text += f"\n<i>... и еще {len(session.working_tags) - 8} тегов</i>"
@@ -260,7 +261,7 @@ async def start_tags_review(
     message_text = _format_tags_message(session)
     keyboard = _build_tags_keyboard(session)
 
-    await message.answer(message_text, reply_markup=keyboard)
+    await message.answer(message_text, parse_mode="HTML", reply_markup=keyboard)
     logger.info(f"Started tags review for meeting {meeting_id} by user {user_id}")
 
 
@@ -286,7 +287,7 @@ async def drop_tag_handler(callback: CallbackQuery, state: FSMContext) -> None:
             message_text = _format_tags_message(session)
             keyboard = _build_tags_keyboard(session)
 
-            await callback.message.edit_text(message_text, reply_markup=keyboard)
+            await callback.message.edit_text(message_text, parse_mode="HTML", reply_markup=keyboard)
             await callback.answer(f"🗑 Удален: {removed_tag}")
         else:
             await callback.answer("❌ Тег не найден", show_alert=True)
@@ -339,7 +340,7 @@ async def clear_all_handler(callback: CallbackQuery, state: FSMContext) -> None:
         message_text = _format_tags_message(session)
         keyboard = _build_tags_keyboard(session)
 
-        await callback.message.edit_text(message_text, reply_markup=keyboard)
+        await callback.message.edit_text(message_text, parse_mode="HTML", reply_markup=keyboard)
         await callback.answer("🗑 Все теги удалены")
 
     except Exception as e:
@@ -461,7 +462,7 @@ async def undo_handler(callback: CallbackQuery, state: FSMContext) -> None:
         message_text = _format_tags_message(session)
         keyboard = _build_tags_keyboard(session)
 
-        await callback.message.edit_text(message_text, reply_markup=keyboard)
+        await callback.message.edit_text(message_text, parse_mode="HTML", reply_markup=keyboard)
         await callback.answer(f"↩️ Отменено: {last_action} '{last_tag}'")
 
     except Exception as e:
