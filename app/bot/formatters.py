@@ -250,7 +250,7 @@ def format_meeting_card(
     title_escaped = _escape_html(_truncate_text(str(title), limits.title, device_type=device_type))
     formatted_date = _format_date(date_str)
 
-    attendees_str = ", ".join(str(a) for a in attendees[: limits.attendees]) if attendees else "—"
+    attendees_str = ", ".join(_escape_html(str(a)) for a in attendees[: limits.attendees]) if attendees else "—"
     if len(attendees) > limits.attendees:
         attendees_str += f" <i>+{len(attendees) - limits.attendees}</i>"
 

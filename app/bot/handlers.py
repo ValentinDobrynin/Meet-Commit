@@ -686,7 +686,18 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
             commits_report,
         ]
         for part in chunks:
-            await msg.answer(part, parse_mode="HTML")
+            try:
+                await msg.answer(part, parse_mode="HTML")
+            except Exception as html_err:
+                # Если HTML парсинг не работает - отправляем без форматирования
+                import html as html_module
+                logger.warning(f"HTML parse error, sending as plain text: {html_err}")
+                plain = html_module.unescape(part.replace("<b>", "").replace("</b>", "")
+                    .replace("<i>", "").replace("</i>", "")
+                    .replace("<code>", "").replace("</code>", "")
+                    .replace("<pre>", "").replace("</pre>", "")
+                    .replace("<a href='", "").replace("'>", ": ").replace("</a>", ""))
+                await msg.answer(plain)
 
         # 7) Запускаем интерактивное ревью тегов (если включено)
         tags_review_started = False
