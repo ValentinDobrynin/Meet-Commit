@@ -43,13 +43,13 @@ async def reload_tags_handler(message: Message) -> None:
             f"♻️ <b>Tag rules reloaded</b>\n\n"
             f"📊 <b>{rules_count}</b> категорий загружено\n"
             f"🔄 LRU кэш очищен"
-        )
+        , parse_mode="HTML")
         user_id = message.from_user.id if message.from_user else "unknown"
         logger.info(f"Admin {user_id} reloaded tag rules: {rules_count} categories")
 
     except Exception as e:
         logger.error(f"Failed to reload tag rules: {e}")
-        await message.answer("❌ <b>Ошибка перезагрузки правил</b>\n\n" f"<code>{str(e)}</code>")
+        await message.answer("❌ <b>Ошибка перезагрузки правил</b>\n\n" f"<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text == "/tags_stats")
@@ -118,7 +118,7 @@ async def tags_stats_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Failed to get tags stats: {e}")
-        await message.answer("❌ <b>Ошибка получения статистики</b>\n\n" f"<code>{str(e)}</code>")
+        await message.answer("❌ <b>Ошибка получения статистики</b>\n\n" f"<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text == "/metrics")
@@ -201,7 +201,7 @@ async def metrics_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Failed to get metrics: {e}")
-        await message.answer("❌ <b>Ошибка получения метрик</b>\n\n" f"<code>{str(e)}</code>")
+        await message.answer("❌ <b>Ошибка получения метрик</b>\n\n" f"<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text == "/dedup_status")
@@ -256,7 +256,7 @@ async def dedup_status_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in dedup_status_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка получения статуса</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка получения статуса</b>\n\n<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text == "/dedup_toggle")
@@ -301,7 +301,7 @@ async def dedup_toggle_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in dedup_toggle_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка переключения</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка переключения</b>\n\n<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text == "/clear_cache")
@@ -317,13 +317,13 @@ async def clear_cache_handler(message: Message) -> None:
             "🧹 <b>Кэш очищен</b>\n\n"
             "LRU кэш результатов тегирования сброшен.\n"
             "Следующие запросы будут обрабатываться заново."
-        )
+        , parse_mode="HTML")
         user_id = message.from_user.id if message.from_user else "unknown"
         logger.info(f"Admin {user_id} cleared tagging cache")
 
     except Exception as e:
         logger.error(f"Failed to clear cache: {e}")
-        await message.answer("❌ <b>Ошибка очистки кэша</b>\n\n" f"<code>{str(e)}</code>")
+        await message.answer("❌ <b>Ошибка очистки кэша</b>\n\n" f"<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text == "/tags_validate")
@@ -344,7 +344,7 @@ async def tags_validate_handler(message: Message) -> None:
                 "• Нет дубликатов тегов\n"
                 "• Веса в допустимых пределах\n"
                 "• Структура файла корректна"
-            )
+            , parse_mode="HTML")
         else:
             # Ограничиваем количество ошибок для читаемости
             display_errors = errors[:20]
@@ -354,7 +354,7 @@ async def tags_validate_handler(message: Message) -> None:
                 error_text += f"\n\n... и еще {len(errors) - 20} ошибок"
 
             await message.answer(
-                f"❌ <b>Найдены ошибки в YAML ({len(errors)}):</b>\n\n"
+                f"❌ <b>Найдены ошибки в YAML ({len(errors, parse_mode="HTML")}):</b>\n\n"
                 f"{error_text}\n\n"
                 f"💡 Исправьте ошибки и выполните /reload_tags"
             )
@@ -364,7 +364,7 @@ async def tags_validate_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in tags validation: {e}")
-        await message.answer(f"❌ <b>Ошибка валидации YAML</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка валидации YAML</b>\n\n<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text.regexp(r"^/retag\s+([0-9a-f\-]{10,})(\s+dry-run)?$", flags=re.I))
@@ -389,7 +389,7 @@ async def retag_handler(message: Message) -> None:
         is_dry_run = bool(match.group(2))
 
         await message.answer(
-            f"🔍 <b>Retag {'(dry-run)' if is_dry_run else ''}</b>\n\n⏳ Получаю данные встречи..."
+            f"🔍 <b>Retag {'(dry-run, parse_mode="HTML")' if is_dry_run else ''}</b>\n\n⏳ Получаю данные встречи..."
         )
 
         # Импортируем функции
@@ -463,7 +463,7 @@ async def retag_handler(message: Message) -> None:
                 logger.error(f"Error updating meeting tags: {update_error}")
                 await message.answer(
                     f"❌ <b>Ошибка обновления тегов</b>\n\n"
-                    f"<code>{str(update_error)}</code>\n\n"
+                    f"<code>{str(update_error, parse_mode="HTML")}</code>\n\n"
                     f"Используйте dry-run для проверки: <code>/retag {meeting_id} dry-run</code>"
                 )
 
@@ -472,7 +472,7 @@ async def retag_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in retag_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка retag</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка retag</b>\n\n<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text.regexp(r"^/test_tags\s+.+$"))
@@ -489,7 +489,7 @@ async def test_tags_handler(message: Message) -> None:
         if not text_to_test:
             await message.answer(
                 "❌ Укажите текст для тестирования.\nПример: <code>/test_tags Обсудили IFRS аудит</code>"
-            )
+            , parse_mode="HTML")
             return
 
         # Получаем scored результаты
@@ -498,7 +498,7 @@ async def test_tags_handler(message: Message) -> None:
         if not scored_results:
             await message.answer(
                 f"🏷️ <b>Тест тегирования</b>\n\n📝 Текст: <i>{text_to_test}</i>\n\n❌ Теги не найдены"
-            )
+            , parse_mode="HTML")
             return
 
         # Формируем ответ
@@ -532,7 +532,7 @@ async def test_tags_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in test_tags_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка тестирования тегов</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка тестирования тегов</b>\n\n<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text == "/admin_help")
@@ -655,7 +655,7 @@ async def admin_config_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Failed to get admin config: {e}")
-        await message.answer(f"❌ <b>Ошибка получения настроек</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка получения настроек</b>\n\n<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text == "/clients_stats")
@@ -717,7 +717,7 @@ async def clients_stats_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Error in clients_stats_handler: {e}")
         await message.answer(
-            f"❌ <b>Ошибка получения статистики клиентов</b>\n\n<code>{str(e)}</code>"
+            f"❌ <b>Ошибка получения статистики клиентов</b>\n\n<code>{str(e, parse_mode="HTML")}</code>"
         )
 
 
@@ -764,7 +764,7 @@ async def clients_cleanup_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in clients_cleanup_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка очистки кэша клиентов</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка очистки кэша клиентов</b>\n\n<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text.regexp(r"^/review_tags\s+([0-9a-f\-]{10,})$"))
@@ -789,7 +789,7 @@ async def review_tags_handler(message: Message, state: FSMContext) -> None:
 
         await message.answer(
             f"🔍 <b>Загружаю теги встречи...</b>\n\n⏳ ID: <code>{meeting_id}</code>"
-        )
+        , parse_mode="HTML")
 
         # Импортируем функции
         from app.bot.handlers_tags_review import start_tags_review
@@ -822,7 +822,7 @@ async def review_tags_handler(message: Message, state: FSMContext) -> None:
 
     except Exception as e:
         logger.error(f"Error in review_tags_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка запуска ревью тегов</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка запуска ревью тегов</b>\n\n<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(
@@ -859,7 +859,7 @@ async def sync_tags_handler(message: Message) -> None:
             f"📊 <b>Направление:</b> {direction_text}\n"
             f"🧪 <b>Режим:</b> {'Предварительный просмотр' if is_dry_run else 'Применение изменений'}\n\n"
             "⏳ Выполняю синхронизацию..."
-        )
+        , parse_mode="HTML")
 
         # Импортируем функции синхронизации
         if direction == "from-notion":
@@ -917,7 +917,7 @@ async def sync_tags_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in sync_tags_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка синхронизации</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка синхронизации</b>\n\n<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text == "/sync_status")
@@ -976,7 +976,7 @@ async def sync_status_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in sync_status_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка получения статуса</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка получения статуса</b>\n\n<code>{str(e, parse_mode="HTML")}</code>")
 
 
 @router.message(F.text.regexp(r"^/adaptive_demo(\s+(mobile|tablet|desktop))?$"))
@@ -1035,7 +1035,7 @@ async def adaptive_demo_handler(message: Message) -> None:
             limits = DEVICE_LIMITS.get(device_type, DEVICE_LIMITS["tablet"])
 
             await message.answer(
-                f"📱 <b>Адаптивное форматирование для {device_type.title()}</b>\n\n"
+                f"📱 <b>Адаптивное форматирование для {device_type.title(, parse_mode="HTML")}</b>\n\n"
                 f"🎯 <b>Лимиты:</b> title={limits.title}, desc={limits.description}, "
                 f"attendees={limits.attendees}, tags={limits.tags}, id={limits.id_length}",
                 parse_mode="HTML",
@@ -1078,7 +1078,7 @@ async def adaptive_demo_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Error in adaptive_demo_handler: {e}")
         await message.answer(
-            f"❌ <b>Ошибка демонстрации</b>\n\n<code>{str(e)}</code>", parse_mode="HTML"
+            f"❌ <b>Ошибка демонстрации</b>\n\n<code>{str(e, parse_mode="HTML")}</code>", parse_mode="HTML"
         )
 
 
@@ -1132,7 +1132,7 @@ async def people_activity_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Error in people_activity_handler: {e}")
         await message.answer(
-            f"❌ <b>Ошибка получения статистики активности</b>\n\n<code>{str(e)}</code>",
+            f"❌ <b>Ошибка получения статистики активности</b>\n\n<code>{str(e, parse_mode="HTML")}</code>",
             parse_mode="HTML",
         )
 
@@ -1190,7 +1190,7 @@ async def agenda_stats_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Error in agenda_stats_handler: {e}")
         await message.answer(
-            f"❌ <b>Ошибка получения статистики agenda</b>\n\n<code>{str(e)}</code>",
+            f"❌ <b>Ошибка получения статистики agenda</b>\n\n<code>{str(e, parse_mode="HTML")}</code>",
             parse_mode="HTML",
         )
 
@@ -1260,7 +1260,7 @@ async def retag_all_handler(message: Message) -> None:
                 f"• Записей: ~{estimate['estimated_items']}\n"
                 f"• Время: ~{estimate['estimated_time_minutes']} мин\n\n"
                 f"🔄 Начинаю обработку..."
-            )
+            , parse_mode="HTML")
 
         # Выполняем операцию
         # Приводим типы для mypy
@@ -1317,7 +1317,7 @@ async def retag_all_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Error in retag_all_handler: {e}")
         await message.answer(
-            f"❌ <b>Ошибка выполнения retag_all</b>\n\n<code>{str(e)}</code>", parse_mode="HTML"
+            f"❌ <b>Ошибка выполнения retag_all</b>\n\n<code>{str(e, parse_mode="HTML")}</code>", parse_mode="HTML"
         )
 
 
@@ -1346,7 +1346,7 @@ async def migration_status_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Error in migration_status_handler: {e}")
         await message.answer(
-            f"❌ <b>Ошибка получения статуса миграции</b>\n\n<code>{str(e)}</code>",
+            f"❌ <b>Ошибка получения статуса миграции</b>\n\n<code>{str(e, parse_mode="HTML")}</code>",
             parse_mode="HTML",
         )
 
@@ -1382,7 +1382,7 @@ async def migration_context_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Error in migration_context_handler: {e}")
         await message.answer(
-            f"❌ <b>Ошибка получения контекста</b>\n\n<code>{str(e)}</code>", parse_mode="HTML"
+            f"❌ <b>Ошибка получения контекста</b>\n\n<code>{str(e, parse_mode="HTML")}</code>", parse_mode="HTML"
         )
 
 
@@ -1433,7 +1433,7 @@ async def migration_task_handler(message: Message) -> None:
             await message.answer(
                 f"✅ <b>Задача обновлена</b>\n\n"
                 f"📋 <b>Задача:</b> {task_id}\n"
-                f"📊 <b>Статус:</b> {status_emoji.get(new_status, '📄')} {new_status}\n"
+                f"📊 <b>Статус:</b> {status_emoji.get(new_status, '📄', parse_mode="HTML")} {new_status}\n"
                 f"⏱️ <b>Длительность:</b> {task_info.get('duration', 'Не указана')}\n"
                 f"🎯 <b>Приоритет:</b> {task_info.get('priority', 'MEDIUM')}\n"
                 f"🔢 <b>Фаза:</b> {task_info.get('phase', 1)}",
@@ -1448,7 +1448,7 @@ async def migration_task_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Error in migration_task_handler: {e}")
         await message.answer(
-            f"❌ <b>Ошибка обновления задачи</b>\n\n<code>{str(e)}</code>", parse_mode="HTML"
+            f"❌ <b>Ошибка обновления задачи</b>\n\n<code>{str(e, parse_mode="HTML")}</code>", parse_mode="HTML"
         )
 
 
@@ -1505,7 +1505,7 @@ async def migration_next_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Error in migration_next_handler: {e}")
         await message.answer(
-            f"❌ <b>Ошибка получения следующих действий</b>\n\n<code>{str(e)}</code>",
+            f"❌ <b>Ошибка получения следующих действий</b>\n\n<code>{str(e, parse_mode="HTML")}</code>",
             parse_mode="HTML",
         )
 

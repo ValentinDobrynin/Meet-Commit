@@ -543,13 +543,13 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
             return
 
         # Уведомляем о начале обработки
-        await msg.answer("🔄 <b>Начинаю обработку...</b>\n\n📄 Извлекаю текст из файла...")
+        await msg.answer("🔄 <b>Начинаю обработку...</b>\n\n📄 Извлекаю текст из файла...", parse_mode="HTML")
 
         # 1) normalize
         meta = normalize_run(raw_bytes=raw_bytes, text=text, filename=filename)
 
         # Уведомляем о суммаризации
-        await msg.answer("🤖 <b>Суммаризирую через AI...</b>\n\n⏳ Это может занять 1-4 минуты...")
+        await msg.answer("🤖 <b>Суммаризирую через AI...</b>\n\n⏳ Это может занять 1-4 минуты...", parse_mode="HTML")
 
         # 2) summarize
         prompt_path = (PROMPTS_DIR / prompt_file).as_posix()
@@ -560,7 +560,7 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
         logger.info(f"Meeting tagged with {len(tags)} canonical tags using unified system")
 
         # Уведомляем о сохранении в Notion
-        await msg.answer("💾 <b>Сохраняю в Notion...</b>\n\n📝 Создаю страницу в базе данных...")
+        await msg.answer("💾 <b>Сохраняю в Notion...</b>\n\n📝 Создаю страницу в базе данных...", parse_mode="HTML")
 
         # 4) Подготовка данных для Notion
         # Канонизируем участников к EN именам
@@ -718,7 +718,7 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
             # Не критично - показываем обычное меню
             from app.bot.handlers_inline import build_main_menu_kb
 
-            await msg.answer("🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb())
+            await msg.answer("🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb(), parse_mode="HTML")
 
         # Очищаем состояние только если ревью тегов НЕ было запущено
         if not tags_review_started:

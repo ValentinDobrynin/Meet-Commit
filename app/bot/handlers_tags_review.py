@@ -74,7 +74,7 @@ async def _show_review_queue_after_tags(callback: CallbackQuery) -> None:
         # Fallback к главному меню
         from app.bot.handlers_inline import build_main_menu_kb
 
-        await callback.message.answer("🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb())
+        await callback.message.answer("🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb(), parse_mode="HTML")
 
 
 @dataclass
@@ -421,9 +421,9 @@ async def custom_tag_handler(message: Message, state: FSMContext) -> None:
             await _update_session(session, state)
             await state.set_state(TagsReviewStates.reviewing)
 
-            await message.answer(f"✅ Добавлен тег: <code>{tag}</code>")
+            await message.answer(f"✅ Добавлен тег: <code>{tag}</code>", parse_mode="HTML")
         else:
-            await message.answer(f"⚠️ Тег уже существует: <code>{tag}</code>")
+            await message.answer(f"⚠️ Тег уже существует: <code>{tag}</code>", parse_mode="HTML")
 
     except Exception as e:
         logger.error(f"Error in custom_tag_handler: {e}")
