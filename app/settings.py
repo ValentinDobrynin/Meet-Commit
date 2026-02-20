@@ -22,13 +22,13 @@ class Settings(BaseSettings):
     redis_url: Optional[str] = Field(default=None, description="Redis connection URL for FSM storage")
 
     # OpenAI settings
-    openai_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     summarize_model: str = "gpt-4o-mini"
     summarize_temperature: float = 0.2
 
     # Notion settings
-    notion_token: Optional[str] = None
-    notion_db_meetings_id: Optional[str] = None
+    notion_token: Optional[str] = Field(default=None, alias="NOTION_TOKEN")
+    notion_db_meetings_id: Optional[str] = Field(default=None, alias="NOTION_DB_MEETINGS_ID")
 
     # Эти переменные читаются без APP_ префикса
     commits_db_id: Optional[str] = Field(default=None, alias="COMMITS_DB_ID")
