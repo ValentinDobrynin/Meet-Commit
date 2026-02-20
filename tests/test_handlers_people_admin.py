@@ -344,7 +344,9 @@ class TestIntegration:
     """Интеграционные тесты."""
 
     @patch("app.bot.handlers_people_admin.PEOPLE_JSON_PATH")
-    @pytest.mark.xfail(reason="get_suggested_aliases логика совпадения изменилась — требует пересмотра теста")
+    @pytest.mark.xfail(
+        reason="get_suggested_aliases логика совпадения изменилась — требует пересмотра теста"
+    )
     @patch("app.bot.handlers_people_admin.CANDIDATES_JSON_PATH")
     def test_full_workflow_add_person_with_suggestions(
         self, mock_candidates_path, mock_people_path

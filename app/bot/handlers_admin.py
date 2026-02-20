@@ -52,7 +52,7 @@ async def reload_tags_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Failed to reload tag rules: {e}")
-        await message.answer("❌ <b>Ошибка перезагрузки правил</b>\n\n" f"<code>{str(e)}</code>")
+        await message.answer("❌ <b>Ошибка перезагрузки правил</b>\n\n" f"<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text == "/tags_stats")
@@ -121,7 +121,7 @@ async def tags_stats_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Failed to get tags stats: {e}")
-        await message.answer("❌ <b>Ошибка получения статистики</b>\n\n" f"<code>{str(e)}</code>")
+        await message.answer("❌ <b>Ошибка получения статистики</b>\n\n" f"<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text == "/metrics")
@@ -204,7 +204,7 @@ async def metrics_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Failed to get metrics: {e}")
-        await message.answer("❌ <b>Ошибка получения метрик</b>\n\n" f"<code>{str(e)}</code>")
+        await message.answer("❌ <b>Ошибка получения метрик</b>\n\n" f"<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text == "/dedup_status")
@@ -259,7 +259,7 @@ async def dedup_status_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in dedup_status_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка получения статуса</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка получения статуса</b>\n\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text == "/dedup_toggle")
@@ -304,7 +304,7 @@ async def dedup_toggle_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in dedup_toggle_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка переключения</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка переключения</b>\n\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text == "/clear_cache")
@@ -326,7 +326,7 @@ async def clear_cache_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Failed to clear cache: {e}")
-        await message.answer("❌ <b>Ошибка очистки кэша</b>\n\n" f"<code>{str(e)}</code>")
+        await message.answer("❌ <b>Ошибка очистки кэша</b>\n\n" f"<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text == "/tags_validate")
@@ -367,7 +367,7 @@ async def tags_validate_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in tags validation: {e}")
-        await message.answer(f"❌ <b>Ошибка валидации YAML</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка валидации YAML</b>\n\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text.regexp(r"^/retag\s+([0-9a-f\-]{10,})(\s+dry-run)?$", flags=re.I))
@@ -475,7 +475,7 @@ async def retag_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in retag_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка retag</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка retag</b>\n\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text.regexp(r"^/test_tags\s+.+$"))
@@ -535,7 +535,7 @@ async def test_tags_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in test_tags_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка тестирования тегов</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка тестирования тегов</b>\n\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text == "/admin_help")
@@ -658,7 +658,7 @@ async def admin_config_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Failed to get admin config: {e}")
-        await message.answer(f"❌ <b>Ошибка получения настроек</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка получения настроек</b>\n\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text == "/clients_stats")
@@ -767,7 +767,7 @@ async def clients_cleanup_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in clients_cleanup_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка очистки кэша клиентов</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка очистки кэша клиентов</b>\n\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text.regexp(r"^/review_tags\s+([0-9a-f\-]{10,})$"))
@@ -825,7 +825,7 @@ async def review_tags_handler(message: Message, state: FSMContext) -> None:
 
     except Exception as e:
         logger.error(f"Error in review_tags_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка запуска ревью тегов</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка запуска ревью тегов</b>\n\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(
@@ -920,7 +920,7 @@ async def sync_tags_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in sync_tags_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка синхронизации</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка синхронизации</b>\n\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text == "/sync_status")
@@ -979,7 +979,7 @@ async def sync_status_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in sync_status_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка получения статуса</b>\n\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка получения статуса</b>\n\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text.regexp(r"^/adaptive_demo(\s+(mobile|tablet|desktop))?$"))
@@ -1046,11 +1046,11 @@ async def adaptive_demo_handler(message: Message) -> None:
 
             # Встреча
             meeting_formatted = format_meeting_card(sample_meeting, device_type=device_type)
-            await message.answer(f"📅 <b>Встреча:</b>\n\n{meeting_formatted}")
+            await message.answer(f"📅 <b>Встреча:</b>\n\n{meeting_formatted}", parse_mode="HTML")
 
             # Коммит
             commit_formatted = format_commit_card(sample_commit, device_type=device_type)
-            await message.answer(f"📝 <b>Коммит:</b>\n\n{commit_formatted}")
+            await message.answer(f"📝 <b>Коммит:</b>\n\n{commit_formatted}", parse_mode="HTML")
         else:
             # Показываем сравнение всех устройств
             await message.answer(
@@ -1373,7 +1373,7 @@ async def migration_context_handler(message: Message) -> None:
 
             for i, part in enumerate(parts, 1):
                 header = f"🎯 <b>Контекст миграции (часть {i}/{len(parts)})</b>\n\n"
-                await message.answer(f"{header}<pre>{part}</pre>")
+                await message.answer(f"{header}<pre>{part}</pre>", parse_mode="HTML")
         else:
             await message.answer(
                 f"🎯 <b>Контекст миграции</b>\n\n<pre>{context}</pre>", parse_mode="HTML"
@@ -1568,7 +1568,7 @@ async def webhook_status_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in webhook_status_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка проверки webhook:</b>\n<code>{e}</code>")
+        await message.answer(f"❌ <b>Ошибка проверки webhook:</b>\n<code>{e}</code>", parse_mode="HTML")
 
 
 @router.message(F.text == "/webhook_reset")
@@ -1581,7 +1581,7 @@ async def webhook_reset_handler(message: Message) -> None:
     try:
         from app.bot.main import bot
 
-        await message.answer("🔄 <b>Переустанавливаю webhook...</b>")
+        await message.answer("🔄 <b>Переустанавливаю webhook...</b>", parse_mode="HTML")
 
         success = await ensure_webhook_configured(bot)
 
@@ -1603,4 +1603,4 @@ async def webhook_reset_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in webhook_reset_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка сброса webhook:</b>\n<code>{e}</code>")
+        await message.answer(f"❌ <b>Ошибка сброса webhook:</b>\n<code>{e}</code>", parse_mode="HTML")

@@ -55,7 +55,7 @@ async def health_check_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in health_check_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка health check</b>\\n\\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка health check</b>\\n\\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text == "/performance")
@@ -134,7 +134,7 @@ async def bottlenecks_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in bottlenecks_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка анализа узких мест</b>\\n\\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка анализа узких мест</b>\\n\\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text == "/cache_stats")
@@ -182,7 +182,7 @@ async def cache_stats_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in cache_stats_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка статистики кэша</b>\\n\\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка статистики кэша</b>\\n\\n<code>{str(e)}</code>", parse_mode="HTML")
 
 
 @router.message(F.text.regexp(r"^/benchmark\\s+(\\w+)$"))
@@ -253,4 +253,4 @@ async def benchmark_handler(message: Message) -> None:
 
     except Exception as e:
         logger.error(f"Error in benchmark_handler: {e}")
-        await message.answer(f"❌ <b>Ошибка бенчмарка</b>\\n\\n<code>{str(e)}</code>")
+        await message.answer(f"❌ <b>Ошибка бенчмарка</b>\\n\\n<code>{str(e)}</code>", parse_mode="HTML")

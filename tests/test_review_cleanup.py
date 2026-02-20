@@ -9,9 +9,10 @@
 - Метрики производительности
 """
 
-import pytest
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
+
+import pytest
 
 from app.core.review_cleanup import (
     CleanupStats,
@@ -316,7 +317,9 @@ class TestDuplicateDetection:
         assert len(stats.duplicate_pairs) == 1
         assert stats.duplicate_pairs[0][2] == 1.0  # Точное совпадение
 
-    @pytest.mark.xfail(reason="Алгоритм similarity порог изменился — короткие тексты не считаются дубликатами")
+    @pytest.mark.xfail(
+        reason="Алгоритм similarity порог изменился — короткие тексты не считаются дубликатами"
+    )
     @patch("app.gateways.notion_review.fetch_all_reviews")
     def test_find_similar_duplicates(self, mock_fetch):
         """Тест поиска похожих дубликатов."""
