@@ -16,7 +16,10 @@ from app.core.clients import clear_clients_cache, get_clients_info
 from app.core.metrics import snapshot as get_metrics_snapshot
 from app.core.tagger_v1_scored import validate_rules
 from app.core.tags import clear_cache, get_tagging_stats, reload_tags_rules, tag_text_scored
-from app.core.webhook_monitor import check_webhook_status, ensure_webhook_configured, get_webhook_health_report
+from app.core.webhook_monitor import (
+    ensure_webhook_configured,
+    get_webhook_health_report,
+)
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -1556,10 +1559,10 @@ async def webhook_status_handler(message: Message) -> None:
 
     try:
         from app.bot.main import bot
-        
+
         report = await get_webhook_health_report(bot)
         await message.answer(report)
-        
+
         user_id = message.from_user.id if message.from_user else "unknown"
         logger.info(f"Admin {user_id} checked webhook status")
 
@@ -1577,24 +1580,24 @@ async def webhook_reset_handler(message: Message) -> None:
 
     try:
         from app.bot.main import bot
-        
+
         await message.answer("🔄 <b>Переустанавливаю webhook...</b>")
-        
+
         success = await ensure_webhook_configured(bot)
-        
+
         if success:
             await message.answer(
                 "✅ <b>Webhook успешно переустановлен</b>\n\n"
                 "Используйте /webhook_status для проверки",
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
         else:
             await message.answer(
                 "❌ <b>Не удалось переустановить webhook</b>\n\n"
                 "Проверьте переменную WEBHOOK_URL",
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
-        
+
         user_id = message.from_user.id if message.from_user else "unknown"
         logger.info(f"Admin {user_id} reset webhook: success={success}")
 

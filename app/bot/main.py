@@ -87,24 +87,24 @@ except KeyError:
 def create_storage():
     """Создает storage в зависимости от режима развертывания."""
     deployment_mode = os.getenv("DEPLOYMENT_MODE", "local")
-    
+
     if deployment_mode == "render":
         # Облачный режим - используем Redis
         try:
             from aiogram.fsm.storage.redis import RedisStorage
             from redis.asyncio import Redis
-            
+
             redis_url = os.getenv("REDIS_URL")
-            
+
             if not redis_url:
                 logger.warning("REDIS_URL не настроен, используем MemoryStorage")
                 return MemoryStorage()
-            
-            logger.info(f"🔄 Using Redis storage for cloud mode")
+
+            logger.info("🔄 Using Redis storage for cloud mode")
             # Создаем Redis connection
             redis = Redis.from_url(redis_url, decode_responses=True)
             return RedisStorage(redis=redis)
-            
+
         except ImportError:
             logger.warning("Redis не установлен, используем MemoryStorage")
             return MemoryStorage()
@@ -143,7 +143,7 @@ def register_all_routers():
     dp.include_router(admin_router)
     dp.include_router(admin_monitoring_router)  # Расширенные админские команды
     dp.include_router(router)  # Основной роутер ПОСЛЕДНИМ
-    
+
     logger.info("✅ All routers registered successfully")
 
 
@@ -188,14 +188,14 @@ def run() -> None:
     """Запуск Telegram бота с поддержкой облачного режима."""
     try:
         deployment_mode = os.getenv("DEPLOYMENT_MODE", "local")
-        
+
         if deployment_mode == "render":
             logger.info("🌐 Starting in Render cloud mode...")
             run_cloud_mode()  # Синхронная функция
         else:
             logger.info("💻 Starting in local polling mode...")
             asyncio.run(run_local_mode())
-            
+
     except Exception as e:
         logger.error(f"Bot error: {e}", exc_info=True)
         raise
@@ -207,21 +207,16 @@ def run_cloud_mode():
     Инициализация происходит в lifespan (app/server.py).
     """
     import uvicorn
-    
+
     port = int(os.getenv("PORT", 8000))
     host = "0.0.0.0"
-    
+
     logger.info(f"🌐 Starting FastAPI server on {host}:{port}")
     logger.info("Initialization will happen in lifespan context manager")
-    
+
     # Запускаем uvicorn с FastAPI app
     # lifespan в app/server.py зарегистрирует роутеры и настроит webhook
-    uvicorn.run(
-        "app.server:app",
-        host=host,
-        port=port,
-        log_level="info"
-    )
+    uvicorn.run("app.server:app", host=host, port=port, log_level="info")
 
 
 async def run_local_mode():

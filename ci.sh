@@ -185,14 +185,14 @@ fi
 step "9/9 Зависимости"
 
 echo "  pip-audit..."
-if pip-audit --desc -q 2>&1; then
+if pip-audit --desc 2>&1; then
     ok "pip-audit: уязвимых зависимостей нет"
 else
     warn "pip-audit: найдены уязвимые зависимости (проверьте вручную)"
 fi
 
 echo "  deptry (неиспользуемые / отсутствующие)..."
-if deptry . --ignore DEP002 -q 2>&1; then
+if deptry . --ignore DEP002 2>&1; then
     ok "deptry: зависимости в порядке"
 else
     warn "deptry нашёл замечания"

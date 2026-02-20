@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -18,25 +18,25 @@ class Settings(BaseSettings):
 
     # Cloud deployment settings
     deployment_mode: str = Field(default="local", description="Deployment mode: local or render")
-    webhook_url: Optional[str] = Field(default=None, description="Telegram webhook URL for cloud mode")
-    redis_url: Optional[str] = Field(default=None, description="Redis connection URL for FSM storage")
+    webhook_url: str | None = Field(default=None, description="Telegram webhook URL for cloud mode")
+    redis_url: str | None = Field(default=None, description="Redis connection URL for FSM storage")
 
     # OpenAI settings
-    openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     summarize_model: str = "gpt-4o-mini"
     summarize_temperature: float = 0.2
 
     # Notion settings
-    notion_token: Optional[str] = Field(default=None, alias="NOTION_TOKEN")
-    notion_db_meetings_id: Optional[str] = Field(default=None, alias="NOTION_DB_MEETINGS_ID")
+    notion_token: str | None = Field(default=None, alias="NOTION_TOKEN")
+    notion_db_meetings_id: str | None = Field(default=None, alias="NOTION_DB_MEETINGS_ID")
 
     # Эти переменные читаются без APP_ префикса
-    commits_db_id: Optional[str] = Field(default=None, alias="COMMITS_DB_ID")
-    review_db_id: Optional[str] = Field(default=None, alias="REVIEW_DB_ID")
+    commits_db_id: str | None = Field(default=None, alias="COMMITS_DB_ID")
+    review_db_id: str | None = Field(default=None, alias="REVIEW_DB_ID")
 
     # Новые базы для синхронизации
-    notion_db_tag_catalog_id: Optional[str] = Field(default=None, alias="NOTION_DB_TAG_CATALOG_ID")
-    notion_db_project_catalog_id: Optional[str] = Field(
+    notion_db_tag_catalog_id: str | None = Field(default=None, alias="NOTION_DB_TAG_CATALOG_ID")
+    notion_db_project_catalog_id: str | None = Field(
         default=None, alias="NOTION_DB_PROJECT_CATALOG_ID"
     )
 
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     me_name_en: str = Field(default="Valya Dobrynin", description="English name for 'mine' queries")
 
     # Agendas database
-    agendas_db_id: Optional[str] = Field(default=None, alias="AGENDAS_DB_ID")
+    agendas_db_id: str | None = Field(default=None, alias="AGENDAS_DB_ID")
 
     # Meetings deduplication
     enable_meetings_dedup: bool = Field(
@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     notion_sync_interval_hours: int = 24  # Автосинхронизация каждые 24 часа
     notion_sync_fallback_to_yaml: bool = True  # Fallback на YAML при ошибках
 
-    def is_admin(self, user_id: Optional[int]) -> bool:
+    def is_admin(self, user_id: int | None) -> bool:
         """Проверяет, является ли пользователь администратором."""
         return user_id is not None and user_id in _admin_ids_set
 

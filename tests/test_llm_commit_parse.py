@@ -85,7 +85,7 @@ class TestBuildFullCommit:
         assert result["text"] == "подготовить отчет"
         assert result["direction"] == "theirs"
         assert result["assignees"] == ["Sasha"]
-        assert result["from_person"] == ["Daniil"]
+        assert result["from_person"] == ["Daniil Shuleyko"]
         assert result["due_iso"] == "2025-10-05"
         assert result["confidence"] == 0.9
         assert result["flags"] == ["direct", "llm"]

@@ -124,7 +124,7 @@ async def cmd_start(msg: Message, state: FSMContext):
         "/review - очередь на проверку\n\n"
         "💡 <i>Для полного списка команд используйте /help</i>"
     )
-    
+
     await msg.answer(welcome_text, parse_mode="HTML")
 
 
@@ -265,7 +265,7 @@ async def handle_text_with_fsm_check(msg: Message, state: FSMContext):
 async def _process_ingest_input(msg: Message, state: FSMContext):
     """Обрабатывает ввод для суммаризации (документы и текст)."""
     import base64
-    
+
     raw_bytes: bytes | None = None
     raw_bytes_b64: str | None = None  # Для Redis storage
     text: str | None = None
@@ -283,7 +283,7 @@ async def _process_ingest_input(msg: Message, state: FSMContext):
         if bytes_io:
             raw_bytes = bytes_io.read()
             # Конвертируем bytes в base64 для Redis storage
-            raw_bytes_b64 = base64.b64encode(raw_bytes).decode('utf-8')
+            raw_bytes_b64 = base64.b64encode(raw_bytes).decode("utf-8")
         else:
             await msg.answer("Ошибка: не удалось загрузить файл")
             return
@@ -524,15 +524,15 @@ async def run_commits_pipeline(
 async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
     try:
         import base64
-        
+
         data = await state.get_data()
         raw_bytes_b64 = data.get("raw_bytes_b64")
-        
+
         # Конвертируем base64 обратно в bytes если есть
         raw_bytes = None
         if raw_bytes_b64:
             raw_bytes = base64.b64decode(raw_bytes_b64)
-        
+
         text = data.get("text")
         filename = data.get("filename") or "meeting.txt"
         prompt_file = data.get("prompt_file")
@@ -543,13 +543,18 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
             return
 
         # Уведомляем о начале обработки
-        await msg.answer("🔄 <b>Начинаю обработку...</b>\n\n📄 Извлекаю текст из файла...", parse_mode="HTML")
+        await msg.answer(
+            "🔄 <b>Начинаю обработку...</b>\n\n📄 Извлекаю текст из файла...", parse_mode="HTML"
+        )
 
         # 1) normalize
         meta = normalize_run(raw_bytes=raw_bytes, text=text, filename=filename)
 
         # Уведомляем о суммаризации
-        await msg.answer("🤖 <b>Суммаризирую через AI...</b>\n\n⏳ Это может занять 1-4 минуты...", parse_mode="HTML")
+        await msg.answer(
+            "🤖 <b>Суммаризирую через AI...</b>\n\n⏳ Это может занять 1-4 минуты...",
+            parse_mode="HTML",
+        )
 
         # 2) summarize
         prompt_path = (PROMPTS_DIR / prompt_file).as_posix()
@@ -560,7 +565,10 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
         logger.info(f"Meeting tagged with {len(tags)} canonical tags using unified system")
 
         # Уведомляем о сохранении в Notion
-        await msg.answer("💾 <b>Сохраняю в Notion...</b>\n\n📝 Создаю страницу в базе данных...", parse_mode="HTML")
+        await msg.answer(
+            "💾 <b>Сохраняю в Notion...</b>\n\n📝 Создаю страницу в базе данных...",
+            parse_mode="HTML",
+        )
 
         # 4) Подготовка данных для Notion
         # Канонизируем участников к EN именам
@@ -674,6 +682,7 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
 
         # Предварительный просмотр (экранируем HTML для безопасности)
         import html
+
         preview = "\n".join(summary_md.splitlines()[:MAX_PREVIEW_LINES])
         # Экранируем HTML entities чтобы избежать ошибок парсинга
         preview_escaped = html.escape(preview)
@@ -685,7 +694,9 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
             preview_card,
             commits_report,
         ]
-        import re as _re, html as _html
+        import html as _html
+        import re as _re
+
         for part in chunks:
             try:
                 await msg.answer(part, parse_mode="HTML")
@@ -718,7 +729,9 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
             # Не критично - показываем обычное меню
             from app.bot.handlers_inline import build_main_menu_kb
 
-            await msg.answer("🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb(), parse_mode="HTML")
+            await msg.answer(
+                "🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb(), parse_mode="HTML"
+            )
 
         # Очищаем состояние только если ревью тегов НЕ было запущено
         if not tags_review_started:

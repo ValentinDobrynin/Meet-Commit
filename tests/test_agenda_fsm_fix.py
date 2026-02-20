@@ -126,7 +126,7 @@ class TestAgendaFSMFix:
         # Проверяем содержимое вызова
         call_args = mock_state.update_data.call_args[1]
         assert call_args["text"] == "Обычный текст для суммаризации"
-        assert call_args["raw_bytes"] is None
+        assert call_args["raw_bytes_b64"] is None
         assert call_args["filename"] == "message.txt"
 
     @pytest.mark.asyncio

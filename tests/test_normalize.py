@@ -11,7 +11,7 @@ def test_normalize_with_text():
     assert result["title"] == "test_meeting"
     assert result["date"] == "2024-03-25"
     assert "Valya Dobrynin" in result["attendees"]
-    assert "Daniil" in result["attendees"]
+    assert "Daniil Shuleyko" in result["attendees"]
     assert result["text"] == text
     assert result["raw_hash"] is not None
 

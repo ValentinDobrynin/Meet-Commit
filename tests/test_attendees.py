@@ -20,7 +20,7 @@ def test_attendees_english_resolution():
     sample = "Присутствовали: Валентин и Даня. Обсудили бюджет."
     names = _extract_attendees_en(sample)
     assert "Valya Dobrynin" in names
-    assert "Daniil" in names
+    assert "Daniil Shuleyko" in names
 
 
 def test_attendees_case_insensitive():
@@ -28,7 +28,7 @@ def test_attendees_case_insensitive():
     sample = "Встреча с ВАЛЕНТИНОМ и даней"
     names = _extract_attendees_en(sample)
     assert "Valya Dobrynin" in names
-    assert "Daniil" in names
+    assert "Daniil Shuleyko" in names
 
 
 def test_attendees_no_duplicates():

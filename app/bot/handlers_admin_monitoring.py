@@ -36,7 +36,9 @@ async def health_check_handler(message: Message) -> None:
         from app.core.health_checks import format_health_report, run_all_health_checks
 
         # Уведомляем о начале проверки
-        status_msg = await message.answer("🔍 <b>Проверяю состояние сервисов...</b>", parse_mode="HTML")
+        status_msg = await message.answer(
+            "🔍 <b>Проверяю состояние сервисов...</b>", parse_mode="HTML"
+        )
 
         # Запускаем health checks
         health = await run_all_health_checks(timeout=15.0)
@@ -195,14 +197,17 @@ async def benchmark_handler(message: Message) -> None:
         text = message.text or ""
         parts = text.split()
         if len(parts) < 2:
-            await message.answer("⚠️ Укажите тип бенчмарка: <code>/benchmark commits</code>", parse_mode="HTML")
+            await message.answer(
+                "⚠️ Укажите тип бенчмарка: <code>/benchmark commits</code>", parse_mode="HTML"
+            )
             return
 
         benchmark_type = parts[1].lower()
 
         status_msg = await message.answer(
-            f"🏃 <b>Запускаю бенчмарк: {benchmark_type}</b>\\n\\n⏳ Это может занять 10-30 секунд..."
-        , parse_mode="HTML")
+            f"🏃 <b>Запускаю бенчмарк: {benchmark_type}</b>\\n\\n⏳ Это может занять 10-30 секунд...",
+            parse_mode="HTML",
+        )
 
         if benchmark_type == "commits":
             from app.core.llm_extract_commits import extract_commits

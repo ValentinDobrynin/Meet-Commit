@@ -74,7 +74,9 @@ async def _show_review_queue_after_tags(callback: CallbackQuery) -> None:
         # Fallback к главному меню
         from app.bot.handlers_inline import build_main_menu_kb
 
-        await callback.message.answer("🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb(), parse_mode="HTML")
+        await callback.message.answer(
+            "🎯 <b>Что дальше?</b>", reply_markup=build_main_menu_kb(), parse_mode="HTML"
+        )
 
 
 @dataclass
@@ -184,8 +186,11 @@ def _format_tags_message(session: TagReviewSession) -> str:
 
     # Показываем первые 8 тегов
     import html as _html
+
     visible_tags = session.working_tags[:8]
-    tags_text = "\n".join(f"{i+1}. <code>{_html.escape(str(tag))}</code>" for i, tag in enumerate(visible_tags))
+    tags_text = "\n".join(
+        f"{i+1}. <code>{_html.escape(str(tag))}</code>" for i, tag in enumerate(visible_tags)
+    )
 
     if len(session.working_tags) > 8:
         tags_text += f"\n<i>... и еще {len(session.working_tags) - 8} тегов</i>"
