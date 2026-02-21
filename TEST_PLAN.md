@@ -8,7 +8,8 @@
 ## 📊 Test Status Summary
 
 ✅ **PASS:** 12 tests  
-⚠️ **PARTIAL:** 2 tests  
+⚠️ **PARTIAL:** 1 test  
+🐛 **BUG FOUND:** 1 test  
 ❌ **FAIL:** 0 tests  
 ⏳ **NOT TESTED:** 19 tests
 
@@ -160,55 +161,61 @@ Add them via /people_miner2 → they will be detected in future meetings.
 
 ## 📝 Task Creation
 
-### ✅ Test 6: /commit interactive [PASS]
+### 🐛 Test 6: /commit interactive [BUG FOUND]
 
 **What we check:** 4-step FSM dialog for task creation
 
-**Date:** 21.02.2026
+**Date:** 21.02.2026, 15:55
 
-**Steps:**
-1. Send `/commit`
-2. Enter task text
-3. Select direction (mine/theirs)
-4. Enter assignee name
-5. Enter or skip deadline
+**Steps taken:**
+1. Sent `/commit`
+2. Bot showed Step 1/4: "Введите текст коммита"
+3. Entered: "Сделать презентацию для инвесторов в Заливе"
 
-**Expected:**
-- Bot guides through 4 steps
-- FSM keeps state between messages
-- Task saved to Commits DB
+**Expected:** Bot shows Step 2/4 (Кто поставил задачу? — buttons)
 
-**Result:**
+**Actual result:**
 ```
-✅ (tested — see user confirmation)
+✅ Прямой коммит создан!
+📊 Created: 1
+ℹ️ Direction: theirs
+Заказчик: Dima Dorokhin   ← из предыдущей сессии!
+Исполнитель: Sasha Katanov ← из предыдущей сессии!
+Срок: 06.03.2026          ← из предыдущей сессии!
 ```
 
-> ⚠️ Note: Test 6 needs detailed results. Please share the bot output to complete this entry.
+🐛 Bug: After entering text in Step 1, bot skipped Steps 2-4 and
+   created the commit using stale data from a previous /commit session
+   (from_person, to_person, due_iso still in Redis FSM state).
+
+Root cause: state.clear() runs at /commit start, but if the previous
+   session had completed data, Redis may still have residual state that
+   populates _show_confirmation() immediately after step 1.
+
+Status: Bug to investigate in DirectCommitStates FSM flow.
 
 ---
 
-### ⚠️ Test 7: /llm command [PARTIAL]
+### ✅ Test 7: /llm command [PASS]
 
 **What we check:** Natural language task creation via AI
 
-**Date:** 21.02.2026, 15:49 (new test) + 16.02.2026 (first test)
+**Date:** 21.02.2026, 15:55 (after date fix) + 16.02.2026 (first test)
 
 **Steps:**
+- `/llm Леша Козлов расскажет про Сплит в Еде до конца марта`
 - `/llm Саша Катанов расскажет про франшизу в Лавке до конца марта`
-- `/llm Саша сделает отчет по продажам до пятницы`
 
 **Result:**
 ```
 ✅ Task created instantly
-✅ Assignee: Sasha Katanov — new person, correctly extracted from text
+✅ Assignee: Lesha Kozlov — new person, correctly extracted
 ✅ Customer (заказчик): Valya Dobrynin — correct
 ✅ Tags: Business/Lavka — correct contextual tag
 ✅ Status: 🟢 Активно
-✅ Commit ID generated: c00b0f
-
-⚠️ Due date bug: "до конца марта" → 31.03.2025 (wrong year — should be 2026)
-   LLM doesn't receive current year context for /llm command.
-   Needs fix: pass today's date to LLM when parsing /llm input.
+✅ Due date: 31.03.2026 ← correct year 2026 (after fix)!
+   (was 31.03.2025 before fix — prompt had hardcoded 2025 date)
+✅ Commit ID generated: 966d50
 ```
 
 ---
@@ -461,7 +468,8 @@ Commits found:
 | 7 | Title showing "02 19 Название встречи" | ✅ Timestamp prefix strip regex | 21.02 |
 | 8 | 0 commits for decision-only meetings | ✅ Decision pattern in prompt | 21.02 |
 | 9 | Raw HTML in Review confirm messages | ✅ parse_mode="HTML" in handlers_inline.py | 21.02 |
-| 10 | /llm: "до конца марта" → 2025 instead of 2026 | 🔧 Needs fix: pass today's date to LLM | 21.02 |
+| 10 | /llm: "до конца марта" → 2025 instead of 2026 | ✅ {TODAY} placeholder in llm_parse_ru.md | 21.02 |
+| 11 | /commit: skips steps 2-4, uses stale Redis FSM data | 🔧 Needs investigation in DirectCommitStates | 21.02 |
 
 ---
 
