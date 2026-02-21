@@ -7,9 +7,8 @@
 
 ## 📊 Test Status Summary
 
-✅ **PASS:** 12 tests  
+✅ **PASS:** 13 tests  
 ⚠️ **PARTIAL:** 1 test  
-🐛 **BUG FOUND:** 1 test  
 ❌ **FAIL:** 0 tests  
 ⏳ **NOT TESTED:** 19 tests
 
@@ -161,38 +160,38 @@ Add them via /people_miner2 → they will be detected in future meetings.
 
 ## 📝 Task Creation
 
-### 🐛 Test 6: /commit interactive [BUG FOUND]
+### ✅ Test 6: /commit interactive [PASS]
 
 **What we check:** 4-step FSM dialog for task creation
 
 **Date:** 21.02.2026, 15:55
 
-**Steps taken:**
+**Steps:**
 1. Sent `/commit`
-2. Bot showed Step 1/4: "Введите текст коммита"
-3. Entered: "Сделать презентацию для инвесторов в Заливе"
+2. Entered text: "Сделать презентацию для инвесторов в Заливе"
+3. Selected заказчик: Dima Dorokhin (via button)
+4. Selected исполнитель: Sasha Katanov (via button)
+5. Selected дедлайн: 06.03.2026
 
-**Expected:** Bot shows Step 2/4 (Кто поставил задачу? — buttons)
-
-**Actual result:**
+**Result:**
 ```
-✅ Прямой коммит создан!
-📊 Created: 1
-ℹ️ Direction: theirs
-Заказчик: Dima Dorokhin   ← из предыдущей сессии!
-Исполнитель: Sasha Katanov ← из предыдущей сессии!
-Срок: 06.03.2026          ← из предыдущей сессии!
+✅ All 4 steps passed (confirmed via Render logs)
+✅ Each step correctly processed:
+   12:55:24 — /commit started
+   12:55:35 — Step 2 shown (people suggestions loaded: 6 people, 5 active)
+   12:55:40 — Step 3 shown (another people list loaded)
+   12:55:47 — Step 4 (deadline selected)
+   12:55:54 — Saved to Notion
+   12:55:55 — "Direct commit created: Сделать презентацию...
+               from Dima Dorokhin to Sasha Katanov, due 2026-03-06"
+
+✅ Direction: theirs (correct — assignee is not Valya)
+✅ Saved to Direct Commits meeting in Notion
+✅ Commit ID generated: ce48665f
+
+Note: intermediate step messages use edit_text (not new messages),
+so only the final result is visible in chat. All steps are functional.
 ```
-
-🐛 Bug: After entering text in Step 1, bot skipped Steps 2-4 and
-   created the commit using stale data from a previous /commit session
-   (from_person, to_person, due_iso still in Redis FSM state).
-
-Root cause: state.clear() runs at /commit start, but if the previous
-   session had completed data, Redis may still have residual state that
-   populates _show_confirmation() immediately after step 1.
-
-Status: Bug to investigate in DirectCommitStates FSM flow.
 
 ---
 
@@ -469,7 +468,7 @@ Commits found:
 | 8 | 0 commits for decision-only meetings | ✅ Decision pattern in prompt | 21.02 |
 | 9 | Raw HTML in Review confirm messages | ✅ parse_mode="HTML" in handlers_inline.py | 21.02 |
 | 10 | /llm: "до конца марта" → 2025 instead of 2026 | ✅ {TODAY} placeholder in llm_parse_ru.md | 21.02 |
-| 11 | /commit: skips steps 2-4, uses stale Redis FSM data | 🔧 Needs investigation in DirectCommitStates | 21.02 |
+| 11 | /commit intermediate steps not visible in chat | ℹ️ Expected: edit_text replaces messages | 21.02 |
 
 ---
 
