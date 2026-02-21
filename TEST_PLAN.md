@@ -1,16 +1,16 @@
 # 🧪 Meet-Commit Bot — Test Plan
 
 **Last updated:** 21 February 2026  
-**Tested:** 19 of 33 tests
+**Tested:** 20 of 33 tests
 
 ---
 
 ## 📊 Test Status Summary
 
-✅ **PASS:** 18 tests  
+✅ **PASS:** 19 tests  
 ⚠️ **PARTIAL:** 1 test  
 ❌ **FAIL:** 0 tests  
-⏳ **NOT TESTED:** 14 tests
+⏳ **NOT TESTED:** 13 tests
 
 ---
 
@@ -332,19 +332,34 @@ Not a bot issue; will clear up as old test data is removed.
 
 ---
 
-### ⏳ Test 12: /agenda interactive [NOT TESTED]
+### ✅ Test 12: /agenda interactive [PASS]
 
 **What:** Interactive agenda creation via FSM buttons
 
+**Date:** 21.02.2026, 19:21–19:23
+
 **Steps:**
 1. Send `/agenda`
-2. Select type: 👤 Персональная / 🏢 Для встречи / 🏷️ Тематическая
-3. Enter the parameter (name / meeting ID / tag)
+2. Select type from buttons
+3. Select person/tag from suggestion list
 
-**Expected:**
-- Bot asks for type via buttons
-- After selection asks for the parameter
-- Generates and saves agenda
+**Result:**
+```
+Run 1 — Персональная повестка → Dima Dorokhin:
+✅ Bot showed "👤 Персональная повестка" with people buttons
+✅ Generated: "👤 Повестка — Dima Dorokhin"
+   📋 Заказчик: 1 | 📤 Исполнитель: 1
+✅ Section "от Dima Dorokhin (заказчик)": Сделать презентацию в Заливе
+✅ Section "для Dima Dorokhin (исполнитель)": рассказать про оплату ноутбуков
+
+Run 2 — Тематическая повестка → Business/Lavka:
+✅ Bot showed "🏷️ Тематическая повестка" with tag buttons
+✅ Generated: "🏷️ Повестка — Business/Lavka"
+   📋 Заказчик: 1
+✅ Task: рассказать про франшизу в Лавке до конца марта | Sasha Katanov
+
+Both agenda types work: людям, тегам, темам ✅
+```
 
 ---
 
