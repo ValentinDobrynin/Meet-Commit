@@ -670,8 +670,16 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
         from app.bot.formatters import format_meeting_card, format_success_card
 
         # Формируем данные встречи для карточки
+        # Используем title из meta (уже очищенный stem), а не сырой filename
+        # Убираем ведущие цифро-временные префиксы вида "02 19 " / "2026-02-19 14 01 22 "
+        import re as _re
+        raw_title = meta.get("title") or filename.replace("_", " ").replace(".txt", "")
+        raw_title = raw_title.replace("_", " ")
+        # Отрезаем числовой timestamp-префикс (минимум 2 цифры, только цифры/пробелы/дефисы/двоеточия)
+        # Например: "02 19 " / "2026-02-19 14 01 22 " / "2026-02-19 "
+        clean_title = _re.sub(r"^\d{2}[\d\s\-:]+(?=[^\d\s\-:])", "", raw_title).strip() or raw_title
         meeting_data = {
-            "title": filename.replace("_", " ").replace(".txt", ""),
+            "title": clean_title,
             "date": meta.get("date") or meta.get("meeting_date"),
             "attendees": attendees_en,
             "tags": tags,
