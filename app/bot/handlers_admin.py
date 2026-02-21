@@ -571,7 +571,9 @@ async def admin_help_handler(message: Message) -> None:
         "📥 <code>/sync_tags</code> - Синхронизация Notion → YAML (по умолчанию)\n\n"
         "🌐 <b>Webhook мониторинг (облако):</b>\n"
         "🔍 <code>/webhook_status</code> - Проверить статус webhook\n"
-        "🔄 <code>/webhook_reset</code> - Переустановить webhook при проблемах\n"
+        "🔄 <code>/webhook_reset</code> - Переустановить webhook при проблемах\n\n"
+        "👥 <b>Очистка людей:</b>\n"
+        "🤖 <code>/people_clean</code> - Удалить шлак из кандидатов через LLM\n"
         "📥 <code>/sync_tags from-notion</code> - Синхронизация Notion → YAML\n"
         "📤 <code>/sync_tags to-notion</code> - Синхронизация YAML → Notion\n"
         "🔍 <code>/sync_tags to-notion dry-run</code> - Предварительный просмотр\n"
@@ -1604,3 +1606,35 @@ async def webhook_reset_handler(message: Message) -> None:
     except Exception as e:
         logger.error(f"Error in webhook_reset_handler: {e}")
         await message.answer(f"❌ <b>Ошибка сброса webhook:</b>\n<code>{e}</code>", parse_mode="HTML")
+
+
+@router.message(F.text == "/people_clean")
+async def people_clean_handler(message: Message) -> None:
+    """Очищает кандидатов людей через LLM — убирает шлак."""
+    if not _is_admin(message):
+        await message.answer("❌ Команда доступна только администраторам")
+        return
+
+    try:
+        await message.answer(
+            "🤖 <b>Запускаю LLM-очистку кандидатов...</b>\n\n"
+            "Это может занять 10–30 секунд.",
+            parse_mode="HTML",
+        )
+
+        from app.core.llm_people_filter import clean_existing_candidates
+        result = clean_existing_candidates()
+
+        await message.answer(
+            f"✅ <b>Очистка завершена</b>\n\n"
+            f"✅ Оставлено имён: <b>{result['kept']}</b>\n"
+            f"🗑️ Удалено шлака: <b>{result['removed']}</b>",
+            parse_mode="HTML",
+        )
+
+        user_id = message.from_user.id if message.from_user else "unknown"
+        logger.info(f"Admin {user_id} ran people_clean: {result}")
+
+    except Exception as e:
+        logger.error(f"Error in people_clean_handler: {e}")
+        await message.answer(f"❌ <b>Ошибка очистки:</b>\n<code>{e}</code>", parse_mode="HTML")

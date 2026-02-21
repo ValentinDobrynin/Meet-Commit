@@ -251,6 +251,17 @@ def ingest_text(*, text: str, meeting_id: str, meeting_date: str) -> None:
         if not found_aliases:
             return
 
+        # LLM-фильтрация: отсекаем слова/фразы которые заведомо не имена людей
+        # Фильтруем только новые алиасы (не уже известных людей)
+        try:
+            from app.core.llm_people_filter import filter_candidates_via_llm
+            keep, skip = filter_candidates_via_llm(list(found_aliases))
+            if skip:
+                logger.info(f"LLM filter removed {len(skip)} non-name candidates: {skip[:10]}")
+            found_aliases = set(keep)
+        except Exception as e:
+            logger.warning(f"LLM people filter failed, using all candidates: {e}")
+
         candidates = _load_candidates()
         updated_count = 0
         new_count = 0
