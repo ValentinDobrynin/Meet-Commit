@@ -69,3 +69,12 @@ logs/
 *.db
 *.sqlite3
 scripts/
+
+# Runtime data (ephemeral on Render — never commit these)
+# people.json is the ONLY dictionary we track in git (approved people)
+# All other dictionaries are runtime state that regenerates from meetings
+app/dictionaries/people_candidates.json
+app/dictionaries/active_users.json
+
+# Cache
+cache/
