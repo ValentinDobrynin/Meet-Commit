@@ -29,7 +29,11 @@ def _load_prompt() -> str:
 
 def _call_llm_parse(text: str) -> dict[str, Any]:
     """Вызывает LLM для парсинга текста коммита."""
+    from datetime import date
     prompt = _load_prompt()
+    # Подставляем актуальную дату через плейсхолдер {TODAY}
+    today = date.today()
+    prompt = prompt.replace("{TODAY}", today.isoformat())
     client = get_openai_parse_client()
 
     try:
