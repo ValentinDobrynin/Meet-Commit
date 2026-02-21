@@ -103,7 +103,9 @@ async def cb_main_review(callback: CallbackQuery):
                 ]
             )
             await callback.message.answer(
-                f"📋 <b>Pending review ({len(items)} элементов):</b>", reply_markup=confirm_all_kb
+                f"📋 <b>Pending review ({len(items)} элементов):</b>",
+                reply_markup=confirm_all_kb,
+                parse_mode="HTML",
             )
 
         # Используем новое красивое форматирование
@@ -193,7 +195,8 @@ async def cb_review_confirm(callback: CallbackQuery):
                     f"✅ <b>[{short_id}] Подтверждено</b>\n"
                     f"📝 {text}\n"
                     f"📊 Создано: {created}, обновлено: {updated}\n"
-                    f"🔗 Привязан коммит: {commit_id[:8] if commit_id else 'none'}"
+                    f"🔗 Привязан коммит: {commit_id[:8] if commit_id else 'none'}",
+                    parse_mode="HTML",
                 )
             logger.info(
                 f"Review item {short_id} confirmed via inline, linked to commit {commit_id[:8] if commit_id else 'none'}"
@@ -396,7 +399,7 @@ async def cb_review_confirm_all(callback: CallbackQuery):
                 result_msg = f"✅ <b>Подтверждено: {confirmed_count} элементов</b>"
                 if errors_count > 0:
                     result_msg += f"\n⚠️ Ошибок: {errors_count}"
-                await callback.message.answer(result_msg)
+                await callback.message.answer(result_msg, parse_mode="HTML")
 
                 # Проверяем, пуста ли очередь после обработки
                 remaining_items = list_open_reviews(limit=1)
