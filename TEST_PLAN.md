@@ -16,53 +16,43 @@
 
 ## 📋 Basic Commands
 
-### ✅ Test 1: /start command [PASS]
+### ✅ Test 1: /start [PASS]
 
-**What we check:** Welcome message and user registration
-
-**Date:** 16.02.2026, 15:56
+**What:** Welcome message and user registration
 
 **Steps:**
-1. Open bot in Telegram
-2. Send `/start`
+1. Send `/start`
 
 **Expected:**
-- Bot replies instantly (< 1 sec)
-- Shows welcome message
-- Lists commands by category
+- Instant reply (< 1 sec)
+- Message "🤖 Добро пожаловать в Meet-Commit!"
+- Sections: умею, быстрый старт, команды, повестки, проверка качества
+- No raw `<b>` HTML tags in text
 
-**Result:**
+**Result — 16.02.2026:**
 ```
 ✅ Instant response (1 sec)
-✅ Welcome message displayed:
-   "🤖 Добро пожаловать в Meet-Commit!"
-✅ All sections present: умею, быстрый старт, команды, повестки, проверка
-✅ HTML formatting correct
+✅ All sections present, correct formatting
 ✅ User registered in active_users.json
 ```
 
 ---
 
-### ✅ Test 2: /help command [PASS]
+### ✅ Test 2: /help [PASS]
 
-**What we check:** Full command reference
-
-**Date:** 16.02.2026, 15:56
+**What:** Full command reference
 
 **Steps:**
 1. Send `/help`
 
 **Expected:**
-- Full command list
-- Grouped by category
+- All categories: основные, создание коммитов, быстрые запросы, повестки, люди, review
+- No raw `<b>` tags
 
-**Result:**
+**Result — 16.02.2026:**
 ```
-✅ Instant response
-✅ All categories: основные, создание, запросы, повестки, люди, review
-✅ Examples included
-✅ Admin section referenced
-✅ HTML formatting correct
+✅ All categories present, HTML rendered correctly
+✅ Admin commands referenced at the bottom
 ```
 
 ---
@@ -71,90 +61,100 @@
 
 ### ✅ Test 3: .txt file upload [PASS]
 
-**What we check:** Full meeting processing pipeline
-
-**Date:** 21.02.2026, 15:31 (clean run with test_meeting_for_test3.txt)
+**What:** Full pipeline — upload → summary → commits → Notion → tag review
 
 **Steps:**
-1. Upload `test_meeting_for_test3.txt` (39 lines, 5 explicit tasks, Синк команды)
-2. Select style: Detailed
-3. Click "Пропустить"
-4. Wait for processing
+1. Upload a `.txt` transcript with 3–5 explicit tasks
+2. Select style (Brief / Detailed / Structured)
+3. Click "Пропустить" (or add a prompt note)
+4. Wait 30–90 sec
 
-**Result:**
+**Expected:**
+- Progress messages render bold (not raw `<b>`)
+- Meeting card: clean title (no "02 19" prefix), correct date, participants, tags, Notion link
+- Summary preview shown (no raw HTML in AI text)
+- Commit stats: N created + M to review
+- Tag review buttons appear after processing
+
+**Result — 21.02.2026:**
 ```
-✅ Progress messages — correct bold rendering, no raw <b> tags:
-   🔄 Начинаю обработку...
-   🤖 Суммаризирую через AI...
-   💾 Сохраняю в Notion...
-   🔍 Обрабатываю коммиты...
-
-✅ Meeting card:
-   📅 test meeting for test3      (no timestamp prefix)
-   🗓️ Дата: 21.02.2026
-   👥 Участники: Valya Dobrynin   (expected: Маша/Глеб not in dictionary yet)
-   🏷️ Теги: 7 tags auto-assigned
-   🔗 Открыть в Notion (link present)
-
-✅ Summary — detailed and structured, 3 participants mentioned in text
-
-✅ Commits: 6 total
-   • Saved directly: 3 (explicit tasks with known assignees)
-   • Sent to Review Queue: 3 (no assignees — Маша/Глеб not in people.json)
-     - "привести инструкцию в порядок"
-     - "разобраться с жалобами на медленную загрузку"
-     - "зафиксировать в документах: договоренность о презентации"
-
-✅ Review Queue — showed 3 items, all confirmed via Confirm All button
-✅ No raw HTML anywhere in the output
-
-Note: Маша and Глеб appear as people candidates after processing.
-Add them via /people_miner2 → they will be detected in future meetings.
+✅ All progress messages bold, no raw tags
+✅ Title: "test meeting for test3" (no timestamp prefix)
+✅ Date: 21.02.2026
+✅ 6 commits total: 3 direct + 3 to Review Queue
+✅ Review Queue showed and Confirm All worked
+✅ No raw HTML anywhere
+Note: Маша/Глеб not in people.json → unknown participants expected
 ```
 
 ---
 
 ### ✅ Test 4: PDF format [PASS]
 
-**What we check:** PDF file parsed and processed correctly
-
-**Date:** 21.02.2026, 15:44
+**What:** PDF file extracted and processed identically to .txt
 
 **Steps:**
-1. Uploaded real PDF transcript (Согласование коммерческих условий)
-2. Selected style, clicked Пропустить
+1. Upload a `.pdf` meeting transcript
+2. Select style, click Пропустить
 
-**Result:**
-```
-✅ PDF accepted and text extracted correctly
-✅ Processing pipeline identical to .txt
-✅ Title: "Согласование коммерческих условий и принципов тарификации"
-   (no timestamp prefix, clean title)
-✅ Date: 19.02.2026 (extracted from PDF content)
-✅ Summary: correct, 3 key decisions and risks identified
-✅ Commits: 1 direct + 1 to Review Queue
-✅ No raw HTML anywhere
-```
+**Expected:**
+- Text extracted from PDF
+- Pipeline identical to .txt (summary, commits, Notion)
 
-**Still to test:** `.docx` and `.vtt` formats
+**Result — 21.02.2026:**
+```
+✅ PDF text extracted correctly
+✅ Title, date, summary, commits — all correct
+✅ No errors specific to PDF format
+Still to test: .docx and .vtt
+```
 
 ---
 
 ### ✅ Test 5: Plain text (no file) [PASS]
 
-**What we check:** Bot processes pasted meeting text same as file upload
-
-**Date:** 21.02.2026
+**What:** Bot processes pasted text without file attachment
 
 **Steps:**
-1. Pasted meeting text directly into chat (no file attachment)
+1. Copy meeting notes
+2. Paste text directly into chat (no attachment)
 
-**Result:**
+**Expected:**
+- Bot shows style selection buttons
+- Processing identical to file upload
+
+**Result — 21.02.2026:**
 ```
-✅ Bot showed style selection buttons
-✅ Processing ran identically to file upload
-✅ Meeting saved to Notion
+✅ Bot showed style buttons after plain text input
+✅ Meeting saved to Notion as expected
 ```
+
+---
+
+### ⏳ Test 4b: DOCX format [NOT TESTED]
+
+**What:** .docx file parsed correctly
+
+**Steps:**
+1. Upload a `.docx` transcript
+
+**Expected:**
+- Text extracted (all paragraphs)
+- Processing identical to .txt
+
+---
+
+### ⏳ Test 4c: VTT format [NOT TESTED]
+
+**What:** Zoom/Teams subtitle file (.vtt / .webvtt) parsed correctly
+
+**Steps:**
+1. Upload a `.vtt` subtitle file from Zoom or Teams
+
+**Expected:**
+- Timestamps stripped, only dialogue text kept
+- Processing identical to .txt
+- Participants detected from speaker names
 
 ---
 
@@ -162,155 +162,257 @@ Add them via /people_miner2 → they will be detected in future meetings.
 
 ### ✅ Test 6: /commit interactive [PASS]
 
-**What we check:** 4-step FSM dialog for task creation
-
-**Date:** 21.02.2026, 15:55
+**What:** 4-step FSM dialog for manual task creation
 
 **Steps:**
-1. Sent `/commit`
-2. Entered text: "Сделать презентацию для инвесторов в Заливе"
-3. Selected заказчик: Dima Dorokhin (via button)
-4. Selected исполнитель: Sasha Katanov (via button)
-5. Selected дедлайн: 06.03.2026
+1. Send `/commit`
+2. Step 1 — Enter task text (free text)
+3. Step 2 — Select заказчик (who assigned the task) via buttons or type name
+4. Step 3 — Select исполнитель (assignee) via buttons or type name
+5. Step 4 — Select deadline via buttons (сегодня / эта неделя / ...) or type date
 
-**Result:**
+**Expected:**
+- Each step shows buttons + manual input option
+- Final commit saved to Notion Commits DB
+- Correct direction: "mine" if Valya is assignee, "theirs" otherwise
+
+**Result — 21.02.2026:**
 ```
-✅ All 4 steps passed (confirmed via Render logs)
-✅ Each step correctly processed:
-   12:55:24 — /commit started
-   12:55:35 — Step 2 shown (people suggestions loaded: 6 people, 5 active)
-   12:55:40 — Step 3 shown (another people list loaded)
-   12:55:47 — Step 4 (deadline selected)
-   12:55:54 — Saved to Notion
-   12:55:55 — "Direct commit created: Сделать презентацию...
-               from Dima Dorokhin to Sasha Katanov, due 2026-03-06"
-
-✅ Direction: theirs (correct — assignee is not Valya)
-✅ Saved to Direct Commits meeting in Notion
-✅ Commit ID generated: ce48665f
-
-Note: intermediate step messages use edit_text (not new messages),
-so only the final result is visible in chat. All steps are functional.
+✅ All 4 steps worked (confirmed via Render logs)
+✅ Task: "Сделать презентацию для инвесторов в Заливе"
+   from Dima Dorokhin → to Sasha Katanov, due 2026-03-06
+✅ Direction: theirs
+✅ Saved to Notion (Direct Commits meeting)
+Note: intermediate steps use edit_text → only final card visible in chat
 ```
 
 ---
 
-### ✅ Test 7: /llm command [PASS]
+### ✅ Test 7: /llm [PASS]
 
-**What we check:** Natural language task creation via AI
-
-**Date:** 21.02.2026, 15:55 (after date fix) + 16.02.2026 (first test)
+**What:** Natural language task creation via AI
 
 **Steps:**
-- `/llm Леша Козлов расскажет про Сплит в Еде до конца марта`
-- `/llm Саша Катанов расскажет про франшизу в Лавке до конца марта`
+1. Send: `/llm Леша Козлов расскажет про Сплит в Еде до конца марта`
 
-**Result:**
+**Expected:**
+- AI extracts: assignee, customer, deadline, direction
+- Relative dates use current year (2026)
+- Saved instantly to Commits DB
+
+**Result — 21.02.2026:**
 ```
-✅ Task created instantly
-✅ Assignee: Lesha Kozlov — new person, correctly extracted
-✅ Customer (заказчик): Valya Dobrynin — correct
-✅ Tags: Business/Lavka — correct contextual tag
-✅ Status: 🟢 Активно
-✅ Due date: 31.03.2026 ← correct year 2026 (after fix)!
-   (was 31.03.2025 before fix — prompt had hardcoded 2025 date)
-✅ Commit ID generated: 966d50
+✅ Assignee: Lesha Kozlov (extracted from name in text)
+✅ Customer: Valya Dobrynin
+✅ Due: 31.03.2026 (correct year after fix)
+✅ Tags: contextual
 ```
 
 ---
 
 ## 🔍 Search & Filtering
 
-### ✅ Test 8: /mine command [PASS]
+### ✅ Test 8: /mine [PASS]
 
-**What we check:** Filter commits by assignee
-
-**Date:** 16.02.2026, 15:48
+**What:** Shows tasks where current user is assignee
 
 **Steps:**
 1. Send `/mine`
 
 **Expected:**
-- Shows user's tasks or "nothing found"
+- Shows list of user's tasks, or "📭 Ничего не найдено"
+- Each task shows short_id, text, assignee, deadline
 
-**Result:**
+**Result — 16.02.2026:**
 ```
-✅ Response: "📭 Мои задачи (все) — Ничего не найдено"
-✅ Correct (no tasks assigned to me yet)
-✅ Fast response
+✅ "📭 Мои задачи (все) — Ничего не найдено"
+✅ Correct (no tasks assigned to Valya at that point)
 ```
 
 ---
 
-### ⏳ Tests 9–10: /due, /by_tag [NOT TESTED]
+### ⏳ Test 9: /due [NOT TESTED]
+
+**What:** Shows commits with deadlines in the next 7 days
+
+**Steps:**
+1. Create 2–3 tasks with deadlines: tomorrow, next week, next month
+   ```
+   /llm Саша сделает X завтра
+   /llm Маша сделает Y через 3 дня
+   /llm Петя сделает Z через месяц
+   ```
+2. Send `/due`
+
+**Expected:**
+- Shows only tasks due within 7 days
+- Sorted by date ascending
+- Task due next month NOT shown
+
+---
+
+### ⏳ Test 10: /by_tag [NOT TESTED]
+
+**What:** Filter commits by tag
+
+**Steps:**
+1. Process a meeting with financial topics (tags auto-assigned)
+2. Send `/by_tag finance`
+3. Also try `/by_tag topic/meeting`
+
+**Expected:**
+- Returns commits with matching tag
+- "Ничего не найдено" for unknown tags
+
+---
+
+### ⏳ Test 10b: /by_assignee [NOT TESTED]
+
+**What:** Shows all commits for a specific person
+
+**Steps:**
+1. Create several tasks for Sasha: `/llm Саша сделает А`, `/llm Саша сделает Б`
+2. Send `/by_assignee Саша`
+
+**Expected:**
+- Shows commits where Sasha is assignee
+- Works with alias "Саша" resolving to canonical name
 
 ---
 
 ## 📊 Agendas
 
-### ⏳ Tests 11–12: Agendas [NOT TESTED]
+### ⏳ Test 11: /agenda_person [NOT TESTED]
+
+**What:** Generates a personal agenda for a specific person
+
+**Steps:**
+1. Ensure there are tasks for a known person (e.g. Sasha Katanov)
+2. Send `/agenda_person Саша`
+3. Wait 5–10 sec
+
+**Expected:**
+- Shows: urgent tasks (due < 3 days), active tasks, overdue tasks
+- Grouped clearly with deadlines
+- "Открыть в Notion" link present
+- Saved to Agendas DB
+
+---
+
+### ⏳ Test 12: /agenda interactive [NOT TESTED]
+
+**What:** Interactive agenda creation via FSM buttons
+
+**Steps:**
+1. Send `/agenda`
+2. Select type: 👤 Персональная / 🏢 Для встречи / 🏷️ Тематическая
+3. Enter the parameter (name / meeting ID / tag)
+
+**Expected:**
+- Bot asks for type via buttons
+- After selection asks for the parameter
+- Generates and saves agenda
+
+---
+
+### ⏳ Test 12b: /agenda_tag [NOT TESTED]
+
+**What:** Topic-based agenda by tag
+
+**Steps:**
+1. Send `/agenda_tag finance`
+
+**Expected:**
+- All commits with tag `finance` grouped by assignee
+- Saved to Agendas DB
 
 ---
 
 ## 🔍 Review Queue
 
-### ✅ Test 13: Review Queue after meeting processing [PASS]
+### ✅ Test 13: Review Queue receives low-confidence commits [PASS]
 
-**What we check:** Decision commits go to Review Queue
-
-**Date:** 21.02.2026
+**What:** Decision commits and tasks without clear assignee go to Review
 
 **Steps:**
-1. Uploaded commercial meeting transcript (rates, decisions)
-2. Bot processed → 2 items in Review Queue
-3. Clicked "Confirm All"
+1. Upload a meeting with declarative decisions ("решили", "договорились")
+2. Check `/review`
 
-**Result:**
+**Expected:**
+- Decision commits appear in queue with flags=[decision], confidence≈0.6
+- Regular commits with known assignees go directly to Commits
+
+**Result — 21.02.2026:**
 ```
-✅ 2 commits extracted from decision-only meeting
-✅ Correctly sent to Review Queue (not directly to Commits):
-   - "зафиксировать ставку 30% для Казахстана"
-     assignees=[], flags=[decision], confidence=0.60
-   - "договориться о коммерческих отношениях на всех потоках денег"
-     assignees=[], flags=[decision], confidence=0.60
-
-✅ Bot showed Review Queue after processing:
-   "📋 Pending review (2 элементов):"
-   with [Confirm] and [Confirm All] buttons
-
-Note: prompt fix required — before this test, decision commits were not extracted.
-After adding "решили/договорились" pattern to prompts/extraction/commits_extract_ru.md:
-   → 0 commits → 2 commits in Review Queue ✅
+✅ 2 decision commits correctly sent to Review Queue
+✅ "Confirm All" button shown
 ```
 
 ---
 
-### ✅ Test 14: Review confirm via "Confirm All" button [PASS]
+### ✅ Test 14: Confirm All [PASS]
 
-**What we check:** Bulk confirm moves items from Review to Commits
-
-**Date:** 21.02.2026
+**What:** Bulk confirm moves all items from Review to Commits
 
 **Steps:**
-1. Review Queue showed 2 items
-2. Clicked "✅ Confirm All" button
+1. Open `/review` (or it appears automatically after meeting processing)
+2. Click "✅ Confirm All"
 
-**Result:**
+**Expected:**
+- All items confirmed
+- Each gets status "resolved" + linked commit ID
+- Queue becomes empty
+- "📋 Review queue пуста." message shown
+
+**Result — 21.02.2026:**
 ```
-✅ Both items confirmed:
-   [cc737a] → created commit 30e344c5 in Notion
-   [af1595] → created commit 30e344c5 in Notion
-
-✅ Status set to "resolved" with linked commit IDs
-✅ Review queue became empty: "📋 Review queue пуста."
-
-Note: HTML tags fix required — "✅ <b>[id] Подтверждено</b>" was showing raw tags.
-Fixed: parse_mode="HTML" added to edit_text() and answer() in handlers_inline.py.
+✅ Both items confirmed and saved
+✅ Queue emptied correctly
 ```
 
 ---
 
-### ⏳ Test 15: Assign via button [NOT TESTED]
+### ⏳ Test 15: /assign via button [NOT TESTED]
+
+**What:** Assign an executor to a Review Queue item via interactive buttons
+
+**Steps:**
+1. Open `/review`
+2. Click "✏️ Assign" under any item
+3. Select a person from the list of buttons
+
+**Expected:**
+- Bot shows person selection keyboard
+- After click: "✅ [id] Assignee → Name"
+- Item updated in Notion Review DB
+
+---
+
+### ⏳ Test 15b: /confirm single item [NOT TESTED]
+
+**What:** Confirm a single Review Queue item by ID
+
+**Steps:**
+1. Open `/review`, note a short_id (e.g. `a1b2c3`)
+2. Send `/confirm a1b2c3`
+
+**Expected:**
+- "[a1b2c3] Коммит подтвержден"
+- Item moves to Commits DB with status resolved
+
+---
+
+### ⏳ Test 15c: /delete review item [NOT TESTED]
+
+**What:** Drop a Review Queue item that is not a real task
+
+**Steps:**
+1. Open `/review`
+2. Click "❌ Delete" or send `/delete a1b2c3`
+
+**Expected:**
+- Item status set to "dropped"
+- Disappears from `/review`
 
 ---
 
@@ -318,84 +420,152 @@ Fixed: parse_mode="HTML" added to edit_text() and answer() in handlers_inline.py
 
 ### ✅ Test — People auto-detection [PASS]
 
-**What we check:** People Miner adds candidates from transcripts
+**What:** People Miner adds name candidates from transcripts automatically
 
-**Date:** 18-21.02.2026
+**Date:** 18–21.02.2026
 
 **Result:**
 ```
-✅ Meeting 1: "Added 56 new candidates, updated counts for existing ones"
-✅ Meeting 2: "Added 43 new candidates"
-✅ People Miner picks up names from transcripts automatically
-
-Note: Gleb Dobroradnykh detected in transcript but not in people.json yet
-→ Will appear in /people_miner2 for verification
+✅ 43–56 candidates added per meeting
+✅ System detects new names in transcript text
 ```
 
 ---
 
-### ⏳ Tests 16–17: /people_miner2, /people_stats_v2 [NOT TESTED]
+### ⏳ Test 16: /people_miner2 [NOT TESTED]
+
+**What:** Interactive verification of new name candidates
+
+**Steps:**
+1. Process a meeting with new participants (e.g. Gleb, Маша)
+2. Send `/people_miner2`
+
+**Expected:**
+- Cards shown for unverified candidates
+- Each card: alias, frequency, context snippet
+- Buttons: [✅ Одобрить] [✏️ Указать EN имя] [❌ Отклонить]
+- After approve: person added to people.json, detected in future meetings
+- After reject: alias added to stopwords
 
 ---
 
-## 🔄 AI Commit Extraction Quality
+### ⏳ Test 17: /people_stats_v2 [NOT TESTED]
 
-### ✅ Test — Commit extraction with implicit tasks [PASS]
+**What:** Statistics about the people dictionary
 
-**What we check:** GPT finds implicit commits in realistic meeting text
+**Steps:**
+1. Send `/people_stats_v2`
 
-**Date:** 21.02.2026 (manual test)
-
-**Transcript used:** 227-word meeting about product, onboarding, integration (created locally)
-
-**Result:**
-```
-✅ 5 commits extracted from 227-word transcript
-✅ Correct assignees: Maria, Valya Dobrynin, Gleb Dobroradnykh
-✅ Dates parsed: "до среды" → 2026-02-23, "к 27-му" → 2026-02-27
-✅ Direction correct: "я напишу" → mine, "Маша возьмёт" → theirs
-✅ All 5 went directly to Commits (confidence ≥ 0.65 after validation)
-✅ 0 went to Review Queue
-
-Commits found:
-  1. привести инструкцию в порядок | Maria | conf=0.75
-  2. отправить напоминание Яндексу | Valya | conf=0.70
-  3. посмотреть метрики / разобраться с разработкой | Gleb | conf=0.75
-  4. обновить презентацию для совета директоров | Maria | due=2026-02-27 | conf=0.80
-  5. дать актуальные цифры | Valya | due=2026-02-23 | conf=0.80
-```
-
----
-
-### ✅ Test — Decision commits extraction [PASS]
-
-**What we check:** "решили/договорились" patterns create follow-up commits
-
-**Date:** 21.02.2026 (after prompt update)
-
-**Transcript:** Commercial meeting about agency rates for Kazakhstan
-
-**Result:**
-```
-✅ 3 commits extracted from decisions-only meeting
-✅ Decision commits correctly flagged with assignees=[], confidence=0.60:
-   - "зафиксировать в документах: 30% агентская ставка для Казахстана"
-   - "обсудить российскую ставку на следующей встрече"
-✅ Explicit task correctly assigned:
-   - "обновить шаблон договора" → Valya Dobrynin, conf=0.75
-```
+**Expected:**
+- Total people in dictionary
+- Candidates pending verification
+- Top candidates by frequency
+- Stopwords count
 
 ---
 
 ## 🧹 Admin Functions
 
-### ⏳ Tests 20–21: /tags_stats, /webhook_status [NOT TESTED]
+### ⏳ Test 20: /tags_stats [NOT TESTED]
+
+**What:** Tagging system statistics (admin only)
+
+**Steps:**
+1. Send `/tags_stats`
+
+**Expected:**
+- Tagging mode (both/v0/v1)
+- Rules count
+- Min score threshold
+- Cache hit rate
+- "❌ Команда доступна только администраторам" for non-admins
+
+---
+
+### ⏳ Test 21: /webhook_status [NOT TESTED]
+
+**What:** Webhook health monitoring (admin only)
+
+**Steps:**
+1. Send `/webhook_status`
+
+**Expected:**
+- Current webhook URL
+- Pending updates count (should be 0)
+- Last error (should be None)
+- IP address and max connections
+
+---
+
+### ⏳ Test 21b: /webhook_reset [NOT TESTED]
+
+**What:** Reinstall webhook if problems arise
+
+**Steps:**
+1. Send `/webhook_reset`
+
+**Expected:**
+- "🔄 Переустанавливаю webhook..."
+- "✅ Webhook успешно переустановлен"
 
 ---
 
 ## 🚨 Edge Cases
 
-### ⏳ Tests 22–25: Edge cases [NOT TESTED]
+### ⏳ Test 22: Empty file [NOT TESTED]
+
+**What:** Empty file handled without crash
+
+**Steps:**
+1. Create an empty `empty.txt`
+2. Upload to bot
+
+**Expected:**
+- Bot handles gracefully (no 500 error)
+- Either: error message "файл пустой"
+- Or: meeting created with empty content
+
+---
+
+### ⏳ Test 23: Very long transcript [NOT TESTED]
+
+**What:** Processing doesn't timeout on large files
+
+**Steps:**
+1. Create a file with 5,000+ words (paste transcript multiple times)
+2. Upload and select Brief
+
+**Expected:**
+- Processing completes (may take 2–3 min)
+- No timeout error
+- Summary generated
+
+---
+
+### ⏳ Test 24: Filename without recognizable date [NOT TESTED]
+
+**What:** Date falls back to upload date when not in filename or content
+
+**Steps:**
+1. Create `random_name_no_date.txt` with content that has no dates
+2. Upload
+
+**Expected:**
+- Date = today's date
+- No "—" shown in meeting card
+
+---
+
+### ⏳ Test 25: Unknown person in /llm [NOT TESTED]
+
+**What:** Name not in dictionary → preserved as-is, added to candidates
+
+**Steps:**
+1. Send `/llm Незнакомый Человек сделает задачу`
+
+**Expected:**
+- Commit created with assignee "Незнакомый Человек"
+- Name appears in `/people_miner2` candidates
 
 ---
 
@@ -403,26 +573,124 @@ Commits found:
 
 ### ✅ Test 26: Redis FSM persistence [PASS]
 
-**What we check:** State preserved between restarts
+**What:** FSM state survives container restarts
 
-**Date:** 07.02.2026 (during migration)
-
-**Result:**
+**Result — 07.02.2026:**
 ```
-✅ Redis storage: "🔄 Using Redis storage for cloud mode"
-✅ FSM states persist between container restarts
-✅ No state loss after deploy
+✅ Redis connected on startup: "🔄 Using Redis storage for cloud mode"
+✅ States persist between restarts
 ```
 
 ---
 
-### ⏳ Tests 27–30: Other infrastructure tests [NOT TESTED]
+### ⏳ Test 27: FSM state preserved across messages [NOT TESTED]
+
+**What:** /commit state survives if user pauses between steps
+
+**Steps:**
+1. Start `/commit`, enter text (Step 1)
+2. Close Telegram for 5 minutes
+3. Re-open and continue with Step 2
+
+**Expected:**
+- Bot resumes from Step 2, remembers text from Step 1
+- Completes successfully
+
+---
+
+### ⏳ Test 28: Response time [NOT TESTED]
+
+**What:** Simple commands respond quickly
+
+**Steps:**
+1. Send `/mine` and time the response
+2. Send `/due` and time the response
+
+**Expected:**
+- `/mine`, `/due` < 3 sec (Notion query)
+- `/start`, `/help` < 1 sec
+
+---
+
+### ⏳ Test 29: Sequential commands [NOT TESTED]
+
+**What:** Bot handles rapid-fire commands without errors
+
+**Steps:**
+1. Quickly send: `/mine`, `/due`, `/commits`, `/review`, `/help` in sequence
+
+**Expected:**
+- All 5 respond correctly
+- No 500 errors
+- Order preserved
+
+---
+
+### ⏳ Test 30: Recovery after deploy [NOT TESTED]
+
+**What:** Bot automatically reconfigures webhook after redeploy
+
+**Steps:**
+1. Trigger Manual Deploy in Render Dashboard
+2. Wait for completion (~3 min)
+3. Send `/start`
+
+**Expected:**
+- Bot responds immediately after deploy
+- Startup greetings sent to active users
+- Webhook auto-configured
 
 ---
 
 ## 🎨 Advanced Features
 
-### ⏳ Tests 31–33: Deduplication, tag inheritance, transliteration [NOT TESTED]
+### ⏳ Test 31: Meeting deduplication [NOT TESTED]
+
+**What:** Same file uploaded twice → no duplicate in Notion
+
+**Steps:**
+1. Upload `transcript.txt` and process it
+2. Upload the **same file** again
+
+**Expected:**
+- Second upload detected as duplicate
+- Message: "⚠️ Встреча с таким содержимым уже обработана"
+- Link to existing meeting shown
+- No new entry in Meetings DB
+
+---
+
+### ⏳ Test 32: Tag inheritance [NOT TESTED]
+
+**What:** Meeting tags are inherited by its commits
+
+**Steps:**
+1. Upload a finance meeting (auto-tagged: `finance/budgets`)
+2. Check the generated commits in Notion
+
+**Expected:**
+- Commits have same tags as the parent meeting
+- Filtering `/by_tag finance` returns both meetings and their commits
+
+---
+
+### ⏳ Test 33: Name transliteration [NOT TESTED]
+
+**What:** Russian aliases map to canonical English names
+
+**Steps:**
+1. Create tasks using Russian aliases:
+   ```
+   /llm Саша сделает А
+   /llm Маша сделает Б
+   /llm Петя сделает В
+   ```
+2. Check Commits in Notion
+3. Try `/by_assignee Саша`
+
+**Expected:**
+- Notion stores canonical names (Alexander, Maria, Petr)
+- `/by_assignee Саша` returns same results as `/by_assignee Alexander`
 
 ---
 
@@ -431,26 +699,30 @@ Commits found:
 ### Critical (must work):
 - [x] /start shows welcome
 - [x] /help shows commands
-- [x] File upload and full processing pipeline end-to-end
+- [x] File upload and full processing pipeline
 - [x] AI summarization works
 - [x] Commits extracted from explicit tasks
-- [x] Commits extracted from decisions (after prompt fix)
+- [x] Commits extracted from decisions ("решили/договорились")
 - [x] Saved to Notion
 - [x] /mine responds correctly
+- [x] /commit 4-step FSM works
+- [x] /llm creates task with correct date
 - [x] Review Queue receives low-confidence commits
 - [x] Confirm All moves items to Commits
 
-### Important:
-- [ ] /commit interactive (Test 6)
-- [ ] /due deadlines (Test 9)
-- [ ] /assign via button (Test 15)
+### Important (test next):
+- [ ] /due — deadlines this week (Test 9)
+- [ ] /assign via button in Review (Test 15)
 - [ ] /agenda_person (Test 11)
-- [ ] /people_miner2 verification (Test 16)
+- [ ] /people_miner2 — verify new people (Test 16)
+- [ ] DOCX format (Test 4b)
+- [ ] VTT format (Test 4c)
 
 ### Advanced:
-- [ ] Meeting deduplication
-- [ ] Tag inheritance on commits
-- [ ] Multiple formats (PDF/DOCX/VTT)
+- [ ] Meeting deduplication (Test 31)
+- [ ] Tag inheritance on commits (Test 32)
+- [ ] FSM state after reconnect (Test 27)
+- [ ] /tags_stats, /webhook_status (Tests 20–21)
 
 ---
 
@@ -462,28 +734,9 @@ Commits found:
 | 2 | "Нет входных данных" after file upload | ✅ key `raw_bytes_b64` | 17.02 |
 | 3 | `<future>` HTML parse error in summary | ✅ `html.escape()` + `parse_mode=None` | 18-19.02 |
 | 4 | Default `parse_mode=HTML` causing crashes | ✅ Removed from Bot init | 19.02 |
-| 5 | Date showing "—" in meeting card | ✅ Wrong meta key fixed | 20.02 |
+| 5 | Date showing "—" in meeting card | ✅ meta key was "meeting_date" → "date" | 20.02 |
 | 6 | `🔍 <b>Обрабатываю коммиты...</b>` raw HTML | ✅ Added `parse_mode="HTML"` | 20.02 |
 | 7 | Title showing "02 19 Название встречи" | ✅ Timestamp prefix strip regex | 21.02 |
-| 8 | 0 commits for decision-only meetings | ✅ Decision pattern in prompt | 21.02 |
-| 9 | Raw HTML in Review confirm messages | ✅ parse_mode="HTML" in handlers_inline.py | 21.02 |
-| 10 | /llm: "до конца марта" → 2025 instead of 2026 | ✅ {TODAY} placeholder in llm_parse_ru.md | 21.02 |
-| 11 | /commit intermediate steps not visible in chat | ℹ️ Expected: edit_text replaces messages | 21.02 |
-
----
-
-## 🎯 Next Tests to Run
-
-**Priority 1 (do next):**
-1. **Test 6** — `/commit` interactive (4-step dialog)
-2. **Test 15** — `/assign` via button in Review Queue
-3. **Test 9** — `/due` with tasks that have real deadlines
-
-**Priority 2:**
-4. **Test 11** — `/agenda_person` with real data
-5. **Test 16** — `/people_miner2` — verify Gleb Dobroradnykh from recent meetings
-6. **Test 3 full** — Verify Notion content end-to-end (check Meetings + Commits DBs)
-
-**Priority 3:**
-7. **Test 31** — Deduplication (upload same file twice)
-8. **Test 4** — PDF/DOCX/VTT formats
+| 8 | 0 commits for decision-only meetings | ✅ Decision pattern added to prompt | 21.02 |
+| 9 | Raw HTML in Review confirm messages | ✅ `parse_mode="HTML"` in handlers_inline.py | 21.02 |
+| 10 | /llm: "до конца марта" → 2025 instead of 2026 | ✅ `{TODAY}` placeholder in llm_parse_ru.md | 21.02 |
