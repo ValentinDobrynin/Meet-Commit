@@ -8,7 +8,7 @@
 ## 📊 Test Status Summary
 
 ✅ **PASS:** 19 tests  
-⚠️ **PARTIAL:** 1 test  
+⚠️ **PARTIAL:** 2 tests  
 ❌ **FAIL:** 0 tests  
 ⏳ **NOT TESTED:** 13 tests
 
@@ -38,7 +38,7 @@
 
 ---
 
-### ✅ Test 2: /help [PASS]
+### ⚠️ Test 2: /help [PARTIAL → fix deployed]
 
 **What:** Full command reference
 
@@ -47,12 +47,21 @@
 
 **Expected:**
 - All categories: основные, создание коммитов, быстрые запросы, повестки, люди, review
-- No raw `<b>` tags
+- No raw `<b>`, `<code>` tags visible — bold/monospace formatting
 
-**Result — 16.02.2026:**
+**Result — 16.02.2026 (before Bot init fix):**
 ```
 ✅ All categories present, HTML rendered correctly
 ✅ Admin commands referenced at the bottom
+```
+
+**Regression — 21.02.2026:**
+```
+❌ Raw HTML visible: <b>Meet-Commit Bot</b>, <code>/start</code>
+   Cause: msg.answer(help_text) without explicit parse_mode="HTML"
+   After removing default parse_mode from Bot init (bug fix #4 on 19.02),
+   /help lost its formatting.
+   Fixed in commit e1d8214 — retest after deploy.
 ```
 
 ---
@@ -806,3 +815,4 @@ Old tasks with 2025 dates visible; will clean up as test data is removed.
 | 8 | 0 commits for decision-only meetings | ✅ Decision pattern added to prompt | 21.02 |
 | 9 | Raw HTML in Review confirm messages | ✅ `parse_mode="HTML"` in handlers_inline.py | 21.02 |
 | 10 | /llm: "до конца марта" → 2025 instead of 2026 | ✅ `{TODAY}` placeholder in llm_parse_ru.md | 21.02 |
+| 12 | /help shows raw HTML tags after Bot init fix | ✅ Added `parse_mode="HTML"` to cmd_help | 21.02 |
