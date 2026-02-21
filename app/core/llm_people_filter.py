@@ -123,22 +123,27 @@ def clean_existing_candidates() -> dict[str, int]:
 
     Полезно для исправления накопленного шлака.
     Возвращает: {"kept": N, "removed": M}
-    """
-    from app.core.people_store import load_candidates, remove_candidate
 
-    all_candidates = load_candidates()
+    Важно: использует people_miner2._load_candidates() и reject_candidate(),
+    так как /people_miner2 хранит кандидатов в собственном формате (CandidateData),
+    отдельном от people_store.load_candidates() (простой {alias: count}).
+    """
+    # Импортируем напрямую из people_miner2 — там хранятся данные для /people_miner2
+    from app.core.people_miner2 import _load_candidates, reject_candidate
+
+    all_candidates = _load_candidates()
     if not all_candidates:
         logger.info("No candidates to clean")
         return {"kept": 0, "removed": 0}
 
     aliases = list(all_candidates.keys())
-    logger.info(f"Cleaning {len(aliases)} candidates via LLM...")
+    logger.info(f"Cleaning {len(aliases)} candidates via LLM (miner2 format)...")
 
     keep, skip = filter_candidates_via_llm(aliases)
 
     removed = 0
     for alias in skip:
-        if remove_candidate(alias):
+        if reject_candidate(alias):
             removed += 1
             logger.info(f"Removed junk candidate: {alias!r}")
 
