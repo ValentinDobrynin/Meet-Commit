@@ -618,7 +618,8 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
 
         # 5) Обработка коммитов
         await msg.answer(
-            "🔍 <b>Обрабатываю коммиты...</b>\n\n🤖 Извлекаю обязательства из транскрипта..."
+            "🔍 <b>Обрабатываю коммиты...</b>\n\n🤖 Извлекаю обязательства из транскрипта...",
+            parse_mode="HTML",
         )
 
         try:
@@ -671,7 +672,7 @@ async def run_pipeline(msg: Message, state: FSMContext, extra: str | None):
         # Формируем данные встречи для карточки
         meeting_data = {
             "title": filename.replace("_", " ").replace(".txt", ""),
-            "date": meta.get("meeting_date"),
+            "date": meta.get("date") or meta.get("meeting_date"),
             "attendees": attendees_en,
             "tags": tags,
             "url": notion_url,
