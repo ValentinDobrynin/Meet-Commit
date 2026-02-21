@@ -184,7 +184,7 @@ async def cmd_help(msg: Message, state: FSMContext):
         "💡 <i>Для административных функций используйте /admin_help</i>\n"
         "🧹 <i>Администраторы могут очищать Review Queue от старых записей и дубликатов</i>"
     )
-    await msg.answer(help_text)
+    await msg.answer(help_text, parse_mode="HTML")
 
 
 @router.message(F.text == "/process")
