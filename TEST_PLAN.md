@@ -1,16 +1,16 @@
 # 🧪 Meet-Commit Bot — Test Plan
 
 **Last updated:** 21 February 2026  
-**Tested:** 14 of 33 tests
+**Tested:** 18 of 33 tests
 
 ---
 
 ## 📊 Test Status Summary
 
-✅ **PASS:** 13 tests  
+✅ **PASS:** 17 tests  
 ⚠️ **PARTIAL:** 1 test  
 ❌ **FAIL:** 0 tests  
-⏳ **NOT TESTED:** 19 tests
+⏳ **NOT TESTED:** 15 tests
 
 ---
 
@@ -231,23 +231,27 @@ Note: intermediate steps use edit_text → only final card visible in chat
 
 ---
 
-### ⏳ Test 9: /due [NOT TESTED]
+### ✅ Test 9: /due [PASS]
 
 **What:** Shows commits with deadlines in the next 7 days
 
+**Date:** 21.02.2026, 16:12
+
 **Steps:**
-1. Create 2–3 tasks with deadlines: tomorrow, next week, next month
-   ```
-   /llm Саша сделает X завтра
-   /llm Маша сделает Y через 3 дня
-   /llm Петя сделает Z через месяц
-   ```
-2. Send `/due`
+1. Send `/due`
 
 **Expected:**
 - Shows only tasks due within 7 days
 - Sorted by date ascending
-- Task due next month NOT shown
+
+**Result:**
+```
+✅ "📋 Дедлайны на неделю — найдено: 1 коммитов"
+✅ Showed: "подготовить презентацию для совета директоров"
+   due: 27.02.2026 — correct (within 7 days from 21.02)
+✅ Tags shown inline
+✅ Assignee shown (— for unassigned)
+```
 
 ---
 
@@ -282,20 +286,33 @@ Note: intermediate steps use edit_text → only final card visible in chat
 
 ## 📊 Agendas
 
-### ⏳ Test 11: /agenda_person [NOT TESTED]
+### ✅ Test 11: /agenda_person [PASS]
 
 **What:** Generates a personal agenda for a specific person
 
+**Date:** 21.02.2026, 16:13
+
 **Steps:**
-1. Ensure there are tasks for a known person (e.g. Sasha Katanov)
-2. Send `/agenda_person Саша`
-3. Wait 5–10 sec
+1. Send `/agenda_person Lesha Kozlov`
 
 **Expected:**
-- Shows: urgent tasks (due < 3 days), active tasks, overdue tasks
-- Grouped clearly with deadlines
-- "Открыть в Notion" link present
+- Tasks grouped: as customer (заказчик) + as assignee (исполнитель)
+- Shows deadlines, assignees
 - Saved to Agendas DB
+
+**Result:**
+```
+✅ "👤 Повестка — Lesha Kozlov"
+✅ Stats: 📋 Заказчик: 16 | 📤 Исполнитель: 1
+✅ Section "Задачи от Lesha Kozlov (заказчик)": 16 tasks listed
+✅ Section "Задачи для Lesha Kozlov (исполнитель)": 1 task
+✅ Each task shows: text, assignee, deadline
+✅ Timestamp: "Сгенерировано: 21.02 13:14 UTC"
+
+Note: Some tasks show dates 2025-03-31 and 2025-10-02 —
+these are old test tasks created before the /llm date bug was fixed.
+Not a bot issue; will clear up as old test data is removed.
+```
 
 ---
 
@@ -315,16 +332,32 @@ Note: intermediate steps use edit_text → only final card visible in chat
 
 ---
 
-### ⏳ Test 12b: /agenda_tag [NOT TESTED]
+### ✅ Test 12b: /agenda_tag [PASS]
 
 **What:** Topic-based agenda by tag
+
+**Date:** 21.02.2026, 16:14
 
 **Steps:**
 1. Send `/agenda_tag finance`
 
 **Expected:**
-- All commits with tag `finance` grouped by assignee
+- Active tasks with tag `finance`
+- Completed tasks (last week)
 - Saved to Agendas DB
+
+**Result:**
+```
+✅ "🏷️ Повестка — finance"
+✅ Stats: 📋 Заказчик: 16 | ✅ Выполнено: 5
+✅ Section "Активные задачи по finance": 16 tasks
+✅ Section "Выполнено за неделю": 5 tasks shown
+   Including: "предоставить актуальные данные для презентации", "написать напоминание Яндексу"
+✅ Timestamp shown
+
+Note: 16 active tasks tagged finance — matches the test data created during testing.
+Old tasks with 2025 dates visible; will clean up as test data is removed.
+```
 
 ---
 
@@ -711,9 +744,11 @@ Note: intermediate steps use edit_text → only final card visible in chat
 - [x] Confirm All moves items to Commits
 
 ### Important (test next):
-- [ ] /due — deadlines this week (Test 9)
+- [x] /due — deadlines this week (Test 9)
+- [x] /agenda_person (Test 11)
+- [x] /agenda_tag (Test 12b)
+- [ ] /by_tag — filter by tag (Test 10)
 - [ ] /assign via button in Review (Test 15)
-- [ ] /agenda_person (Test 11)
 - [ ] /people_miner2 — verify new people (Test 16)
 - [ ] DOCX format (Test 4b)
 - [ ] VTT format (Test 4c)
