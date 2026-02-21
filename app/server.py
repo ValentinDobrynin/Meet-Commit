@@ -23,6 +23,13 @@ async def lifespan(app: FastAPI):
     deployment_mode = os.getenv("DEPLOYMENT_MODE", "local")
     logger.info(f"🌐 Starting Meet-Commit in {deployment_mode} mode...")
 
+    # Инициализируем persistent storage (если настроен)
+    try:
+        from app.core.persistent_storage import init_persistent_storage
+        init_persistent_storage()
+    except Exception as e:
+        logger.warning(f"Persistent storage init failed: {e}")
+
     # Регистрируем роутеры (выполняется ОДИН раз!)
     register_all_routers()
 
