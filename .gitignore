@@ -76,5 +76,5 @@ scripts/
 app/dictionaries/people_candidates.json
 app/dictionaries/active_users.json
 
-# Cache
+# Cache (runtime, regenerated from Notion on /sync_tags)
 cache/
